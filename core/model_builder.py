@@ -115,6 +115,7 @@ class model_builder:
 
         # All action and observation spaces are allowed
         self.model = PPO1(MlpPolicy, self.env, tensorboard_log=self.tf_board, **self.model_parameters)
+        return self.model
 
     def build_TRPO(self):
         from stable_baselines import TRPO

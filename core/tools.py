@@ -5,7 +5,13 @@ Extra tools
 import numpy as np
 
 def test_model(env, model, parameters):
-    
+    """
+     Test a given environment with a trained (not necessarily) model under specific parameters
+
+     env -> gym environment
+     model -> trained stable_baselines model
+     parameters -> parameters used to initialize training and training
+    """
     
     testing_parameters = parameters['testing_parameters']
     
