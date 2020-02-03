@@ -2,7 +2,7 @@
 
   run_name: 'PPO1_tune',
   model: 'PPO1',
-  environment: ['Humanoid-v2', 'CartPole-v0','Ant-v2','MountainCarContinuous-v0' ,'elements'],
+  environment: 'CartPole-v0',
   logging: True, # tensorboard logging
   save_model: False,
   

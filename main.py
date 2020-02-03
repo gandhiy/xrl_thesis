@@ -58,7 +58,6 @@ def main(config):
         try:
             model.learn(
                 total_timesteps=d['learning_parameters']['timesteps'],
-                log_interval=d['learning_parameters']['log_interval'], 
                 callback=callback)
                 
         except KeyboardInterrupt:
@@ -74,10 +73,16 @@ def main(config):
         results = test_model(builder.env, model, d)
         results['environment'] = d['environment']
         s = np.array(shap_vals)
+
+
         for i in range(s.shape[1]):
-            for j in range(s.shape[2]):
-                results['action_{}_obs_{}_mean'.format(i,j)] = np.mean(s[:,i,j])
-                results['action_{}_obs_{}_stddev'.format(i,j)] = np.std(s[:,i,j])
+            if(len(s.shape) > 2):
+                for j in range(s.shape[2]):
+                    results['action_{}_obs_{}_mean'.format(i,j)] = np.mean(s[:,i,j])
+                    results['action_{}_obs_{}_stddev'.format(i,j)] = np.std(s[:,i,j])
+            else:
+                results['action_0_obs_{}_mean'.format(i)] = np.mean(s[:,i])
+                results['action_0_obs_{}_std'.format(i)] = np.std(s[:,i])
         csv_list.append(results)
 
     
