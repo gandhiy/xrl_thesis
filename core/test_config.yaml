@@ -1,0 +1,28 @@
+{
+
+  run_name: 'PPO1_tune',
+  model: 'PPO1',
+  environment: ['Humanoid-v2', 'CartPole-v0','Ant-v2','MountainCarContinuous-v0' ,'elements'],
+  logging: True, # tensorboard logging
+  save_model: False,
+  
+  enviornment_parameters: {},
+
+  learning_parameters: {
+    timesteps: [1000, 100000, 5000, 'step']
+  },
+
+  # model parameters may need to be changed based on model type
+  model_parameters: {
+    gamma: [0.05, 0.95, 0.05, 'step'],
+    lam: [0.05, 0.95, 0.05, 'step'],
+    adam_epsilon: [1,10, 0.1, 'exp'],
+    verbose: 1
+  },
+
+  testing_parameters: {
+    render: False,
+    iterations: 1000
+  }
+  
+}
