@@ -10,9 +10,6 @@ from stable_baselines.common.vec_env import DummyVecEnv
 
 
 
-
-
-
 class model_builder:
 
     def __init__(self, parameters, log_dir):

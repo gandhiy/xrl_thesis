@@ -48,46 +48,53 @@ def main(config):
 
     handler = Config_Handler(config)
     csv_list = []
-    for i,d in  enumerate(handler.generate_dictionaries()):
-        
 
-        builder = model_builder(d, os.path.join(handler.log_dir, str(i)))
-        model = builder.switcher[d['model']]()
+    # stop entire training
+    try:
+        for i,d in  enumerate(handler.generate_dictionaries()):
+            
+
+            builder = model_builder(d, os.path.join(handler.log_dir, str(i)))
+            model = builder.switcher[d['model']]()
+            
+            # stop the model learning
+            try:
+                model.learn(
+                    total_timesteps=d['learning_parameters']['timesteps'],
+                    callback=callback)
+                    
+            except KeyboardInterrupt:
+                print("Incomplete Model Save")
+                model.save(os.path.join(handler.save_folder, 'incomplete_run_{}'.format(i)))
         
-        
-        try:
-            model.learn(
-                total_timesteps=d['learning_parameters']['timesteps'],
-                callback=callback)
-                
-        except KeyboardInterrupt:
-            print("Incomplete Model Save")
-            model.save(os.path.join(handler.save_folder, 'incomplete_run_{}'.format(i)))
+            if(d['save_model']):
+                model.save(os.path.join(handler.save_folder, 'run_{}'.format(i)))
+            
+            
+
+
+            results = test_model(builder.env, model, d)
+            results['environment'] = d['environment']
+            s = np.array(shap_vals)
+
+
+            for i in range(s.shape[1]):
+                if(len(s.shape) > 2):
+                    for j in range(s.shape[2]):
+                        results['action_{}_obs_{}_mean'.format(i,j)] = np.mean(s[:,i,j])
+                        results['action_{}_obs_{}_stddev'.format(i,j)] = np.std(s[:,i,j])
+                else:
+                    results['action_0_obs_{}_mean'.format(i)] = np.mean(s[:,i])
+                    results['action_0_obs_{}_std'.format(i)] = np.std(s[:,i])
+            csv_list.append(results)
     
-        if(d['save_model']):
-            model.save(os.path.join(handler.save_folder, 'run_{}'.format(i)))
-        
-        
-
-
-        results = test_model(builder.env, model, d)
-        results['environment'] = d['environment']
-        s = np.array(shap_vals)
-
-
-        for i in range(s.shape[1]):
-            if(len(s.shape) > 2):
-                for j in range(s.shape[2]):
-                    results['action_{}_obs_{}_mean'.format(i,j)] = np.mean(s[:,i,j])
-                    results['action_{}_obs_{}_stddev'.format(i,j)] = np.std(s[:,i,j])
-            else:
-                results['action_0_obs_{}_mean'.format(i)] = np.mean(s[:,i])
-                results['action_0_obs_{}_std'.format(i)] = np.std(s[:,i])
-        csv_list.append(results)
-
+            
+        df = pd.DataFrame(csv_list)
+        df.to_csv(os.path.join(handler.save_folder, 'results.csv'))
     
-    df = pd.DataFrame(csv_list)
-    df.to_csv(os.path.join(handler.save_folder, 'results.csv'))
+    except KeyboardInterrupt:
+        df = pd.DataFrame(csv_list)
+        df.to_csv(os.path.join(handler.save_folder, 'incomplete_results.csv'))
     
     
 
