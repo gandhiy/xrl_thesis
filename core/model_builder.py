@@ -35,7 +35,7 @@ class model_builder:
 
         if(self.parameters['logging']): 
             self.env = Monitor(self.env, log_dir, allow_early_resets=True)
-            self.tf_board = 'models/{}/tensorboard_logs/'.format(self.parameters['run_name'])
+            self.tf_board = 'saved_models/{}/tensorboard_logs/'.format(self.parameters['run_name'])
         else:
             self.tf_board = None
 

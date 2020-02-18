@@ -25,7 +25,7 @@ class Config_Handler:
             self.config = yaml.load(f)
 
         # create folder to save model runs
-        self.save_folder = os.path.join("models/", self.config['run_name'])
+        self.save_folder = os.path.join("saved_models/", self.config['run_name'])
         os.makedirs(self.save_folder, exist_ok=True)
 
         self.log_dir = os.path.join(self.save_folder, 'logs')

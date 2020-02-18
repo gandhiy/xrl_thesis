@@ -105,10 +105,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('-c', '--configuration_file', required=True, help='Path to configuration file.')
     args = parser.parse_args()
+
+    
     shap_vals = []
-
-    file = open("test_shap.txt", 'w')
-
     main(args.configuration_file)
-
-    file.close()
