@@ -4,7 +4,7 @@ import tensorflow as tf
 import keras.backend as K
 
 
-from keras.models import Sequential, Model
+from keras.models import Sequential, Model, load_model
 from keras.layers import Dense, GaussianNoise, Input, concatenate
 from keras.layers import BatchNormalization, Flatten, Lambda, Conv2D
 from keras.layers import Softmax, MaxPool2D
@@ -94,6 +94,13 @@ class Critic:
             [tau*l1 + (1-tau)*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
         )
 
+
+    def save(self, path):
+        self.model.save(path)
+
+    def load(self, path):
+        self.model = load_model(path)
+
    
 
 class Actor:
@@ -158,3 +165,9 @@ class Actor:
         self.model.set_weights(
             [tau*l1 + (1-tau)*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
         )
+
+    def save(self, path):
+        self.model.save(path)
+
+    def load(self, path):
+        self.model = load_model(path)

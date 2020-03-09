@@ -5,61 +5,6 @@ from core.tools import tfSummary
 
 from pdb import set_trace as debug
 
-"""
-Old methods
-class rfunc:
-    def __init__(self, type):
-        self.type = type
-
-    def reward_func(self, batch, **kwargs):
-        raise NotImplementedError
-
-    def get_type(self):
-        return self.type
-
-class additive_DQN_SHAP(rfunc):
-    def __init__(self):
-        super(additive_DQN_SHAP, self).__init__('additive_DQN_SHAP')
-
-    def shap_predict(self, P):
-        l = []
-        for x in P:
-            l.append(np.argmax(self.behavior.predict(np.expand_dims(x, axis=0))))
-        return np.array(l, dtype='float32')
-
-    def reward_func(self, batch, **kwargs):
-        self.behavior = kwargs['behavior']
-        x_train = np.array(batch.state)
-        x_test = np.array(batch.next_state)[0:kwargs['num_to_explain']]
-        if(kwargs['explainer'] is None or kwargs['_current_timestep']%kwargs['explainer_updates'] == 0):
-            x_train = shap.kmeans(x_train, kwargs['num_explainer_summaries'])
-            kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
-        shap_vals = kwargs['explainer'].shap_values(x_test, nsamples=10, l1_reg='aic', silent=True)
-        
-        return np.sum((np.sum(shap_vals, axis=0)/len(shap_vals))), kwargs        
-
-class additive_DDPG_SHAP(rfunc):
-    def __init__(self):
-        super(additive_DDPG_SHAP, self).__init__('additive_DDPG_SHAP')
-
-    def shap_predict(self, P):
-        l = []
-        for x in P:
-            l.append(self.behavior_pi.predict(x))
-
-        return np.array(l, dtype='float32')
-
-    def reward_func(self, batch, **kwargs):
-        self.behavior_pi = kwargs['behavior_pi']
-        x_train = np.array(batch.state)
-        x_test = np.array(batch.next_state)[0:kwargs['num_to_explain']]
-        if(kwargs['explainer'] is None or kwargs['num_explainer_summaries']):
-            x_train = shap.kmeans(x_train, kwargs['num_explainer_summaries'])
-            kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
-        shap_vals = kwargs['explainer'].shap_values(x_test, nsamples=10, l1_reg='aic', silent=True)
-
-        return np.sum((np.sum(shap_vals, axis=0)/len(shap_vals))), kwargs
-"""
 
 class Identity:
     def __init__(self, predictor=None):
@@ -105,9 +50,18 @@ class additive_SHAP(SHAP):
 
     def reward_function(self, batch, **kwargs):
         shap_vals = self.get_shap_vals(batch, **kwargs)
+        self.plot_shap_vals(kwargs['summary_writer'], shap_vals, kwargs['_current_timesteps'])
+        
         total_val = np.sum((np.sum(shap_vals, axis=0)/len(shap_vals)))
         tv = tfSummary('training/shap_reward', total_val)
         kwargs['summary_writer'].add_summary(tv, kwargs['_current_timestep'])
         return total_val, kwargs
     
-
+    def plot_shap_vals(self, writer, vals, tt):
+        for i, a_list in enumerate(vals):
+            per_obs_mean = np.mean(np.obs(a_list), axis=0)
+            for j, obs in enumerate(per_obs_mean):
+                writer.add_summary(
+                    tfSummary(f'shap_vals/obs_{j}_act_{i}', obs),
+                    tt
+                )

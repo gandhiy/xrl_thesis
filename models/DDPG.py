@@ -1,49 +1,78 @@
-import numpy as np
+import os
+import pickle
 import imageio
+import numpy as np
+import tensorflow as tf
 
 from .base import base
+from os.path import join
 from .networks import Actor, Critic
+from core.tools import tfSummary
+from keras.models import load_model
 from core.replay_experience import Transition
 
+from pdb import set_trace as debug
 
 class DDPGAgent(base):
     def __init__(
-        self, env, reward_class, batch_size=256, memory_size=1028, gamma=0.95, epsilon = 1.0, 
+        self, env, reward_class, model_name='temp', batch_size=256, memory_size=1028, gamma=0.95, epsilon = 1.0, 
         epsilon_min=0.01, epsilon_decay=0.995, exploration_fraction=0.1, update_timesteps=50, 
         tau=0.01, learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps = 500,
         learning_starts = 500, action_replay=False, render=False, explainer_updates=256, explainer_summarizing=25,
-        summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000,
+        summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000, making_a_gif=250, gif_length = 500,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models'):
 
         super(DDPGAgent, self).__init__(
-            env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, epsilon,
-            epsilon_min, epsilon_decay, exploration_fraction, update_timesteps,
-            logger_steps, action_replay, render, val_eps, val_numtimesteps
-        
+            env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
+            epsilon, epsilon_min, epsilon_decay, exploration_fraction, update_timesteps,
+            logger_steps, learning_starts, action_replay, render, model_name, save_paths, val_eps, 
+            val_numtimesteps, making_a_gif, gif_length
+
         )
 
-        self.argmax = False
-        
-        # setup models and optimizers
-        self.behavior_q = Critic(self.env.observation_space.shape, self.env.action_space.shape)
-        self.behavior_q.init_model()
-        self.behavior_q.build_opt(self.learning_rate, self.beta_1, self.beta_2)
-        
-        self.target_q = Critic(self.env.observation_space.shape, self.env.action_space.shape)
-        self.target_q.init_model()
 
-        # self.target_q.build_opt(self.learning_rate, self.beta_1, self.beta_2) not entirely necessary since we'll be updating the weights heuristically
-        
-        self.behavior_pi = Actor(self.env.observation_space.shape, self.env.action_space.shape, self.env.action_space.high)
-        self.behavior_pi.init_model()
-        self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2)
-        self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
-        
-        self.target_pi = Actor(self.env.observation_space.shape, self.env.action_space.shape, self.env.action_space.high)
-        self.target_pi.init_model()
+
+
+        if(len(self.env.action_space.shape)>0):
+            # setup models and optimizers
+            self.behavior_q = Critic(self.env.observation_space.shape, self.env.action_space.shape)
+            self.behavior_q.init_model()
+            self.behavior_q.build_opt(self.learning_rate, self.beta_1, self.beta_2)
+            
+            self.target_q = Critic(self.env.observation_space.shape, self.env.action_space.shape)
+            self.target_q.init_model()
+
+            
+            self.behavior_pi = Actor(self.env.observation_space.shape, self.env.action_space.shape, self.env.action_space.high)
+            self.behavior_pi.init_model()
+            self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2)
+            self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
+            
+            self.target_pi = Actor(self.env.observation_space.shape, self.env.action_space.shape, self.env.action_space.high)
+            self.target_pi.init_model()
+        else:
+            self.behavior_q = Critic(self.env.observation_space.shape, self.env.action_space.n)
+            self.behavior_q.init_model()
+            self.behavior_q.build_opt(self.learning_rate, self.beta_1, self.beta_2)
+
+            self.target_q = Critic(self.env.observation_space.shape, self.env.action_space.n)
+            self.target_q.init_model()
+
+            self.behavior_pi = Actor(self.env.observation_space.shape, self.env.action_space.n)
+            self.behavior_pi.init_model()
+            self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2)
+            self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
+
+            self.target_pi = Actor(self.env.observation_space.shape, self.env.action_space.n, self.evn.action_space.high)
+            self.target_pi.init_model()
+
         self.transfer_weights()
         
 
+        files = [f for f in os.listdir(self.save_path) if 'DDPG' in f]
+        self.save_path = join(self.save_path, 'DDPG{}'.format(len(files) + 1))
+        logdir = join(self.save_path, 'tensorboard_logs')
+        self.summary_writer = tf.summary.FileWriter(logdir)
 
         # explainer parameters
         self.explainer = None
@@ -53,7 +82,8 @@ class DDPGAgent(base):
         self.num_to_explain = num_to_explain
 
         
-        self.reward_function = reward_class(self.shap_predict).reward_func
+        self.reward_class = reward_class
+        self.reward_function = None
 
 
 
@@ -74,6 +104,8 @@ class DDPGAgent(base):
             return st
         else:
             return self.act_once(at, st)
+
+    
         
     def shap_predict(self, st):
         return self.behavior_predict(st)
@@ -141,31 +173,48 @@ class DDPGAgent(base):
 
 
     def learn(self, total_timesteps):
+        self.reward_function = self.reward_class(self.shap_predict).reward_function
         st = self.env.reset()
         assert self.learning_starts < total_timesteps
         
         for tt in range(total_timesteps):
-            
             self.update_dictionary()
             self._current_timestep = tt
             st = self.act(st)
             
             if(self.memory.can_sample(self.batch_size) and tt > self.learning_starts):
                 loss = self.update_on_batch()   
+
+                l = tfSummary('training/loss', loss[0])
+                self.summary_writer.add_summary(l, tt)
+
+                mr = tfSummary('training/average_reward', self._mean_eps_rew)
+                self.summary_writer.add_summary(mr, tt)
                 if (tt+1)%self.update_timesteps == 0:
                     self.transfer_weights()
                     
             
                 if (tt+1)%self.logging_step == 0:
+                    val_avg_rew, val_avg_eps = self.validate()
                     
-                    print(
-                        f"Episodes: {self._num_episodes} \t Average Reward {self._mean_eps_rew:.4f}",
-                        f"\t Critic Loss: {loss[0]:.2E} \t Timesteps: {tt+1:.1f}"
-                    )
+                    r = tfSummary('validation/average_{}_episode_reward'.format(
+                        self.num_validation_episode
+                    ), val_avg_rew)
+                    self.summary_writer.add_summary(r, tt)
+
+                    e = tfSummary('validation/average_episode_length', val_avg_eps)
+                    self.summary_writer.add_summary(e, tt)
+
+                    self._num_episodes = 0
                     
+                if (tt+1)%self.gif_logger_step == 0:
+                    self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
+
+
             if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
                 self.epsilon *= self.epsilon_decay
-                        
+            
+            self.summary_writer.flush()
         self.env.close()
         
 
@@ -191,10 +240,38 @@ class DDPGAgent(base):
                 episode += 1
                 eps_rew = 0
                 obs = self.env.reset()
+        
         if('.gif' not in save):
             save += '.gif'
         imageio.mimsave(save, [np.array(img) for i, img in enumerate(images) if i%2 == 0], fps=29)
         self.env.close()
 
 
-##### ADD ACTION REPLAY IN BOTH DDPG #####
+    def validate(self):
+        reward = 0
+        episode_length = 0
+        obs = self.env.reset()
+        for _ in range(self.num_validation_episode):
+            for j in range(self.num_validation_timesteps):
+                a = self.predict(obs)[0]
+                obs, r, done, _ = self.env.step(a)
+                reward += r
+                if(done):
+                    obs = self.env.reset()
+                    episode_length += (j + 1)
+                    break
+        
+        return reward/self.num_validation_episode, episode_length/self.num_validation_episode
+
+    def save(self):
+        self.behavior_pi.save(join(self.save_path, 'behavior_pi.h5'))
+        self.behavior_q.save(join(self.save_path, 'behavior_q.h5'))
+        self.target_pi.save(join(self.save_path, 'target_pi.h5'))
+        self.target_q.save(join(self.save_path, 'target_p.h5'))
+
+
+    def load(self, path):
+        self.behavior_pi.load(join(path, 'behavior_pi.h5'))
+        self.behavior_q.load(join(path, 'behavior_q.h5'))
+        self.target_pi.load(join(path, 'target_pi.h5'))
+        self.target_q.load(join(path, 'target_q.h5'))

@@ -12,7 +12,7 @@ env = gym.make("CartPole-v0")
 model = DQNAgent(env, 
                  MlpPolicy, 
                  Identity, 
-                 model_name='test3',
+                 model_name='test',
                  memory_size = 50000, 
                  batch_size=256, 
                  update_timesteps=256, 

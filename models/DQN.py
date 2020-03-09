@@ -1,5 +1,4 @@
 import os
-import shap
 import pickle
 import imageio
 import numpy as np 
@@ -8,12 +7,9 @@ import tensorflow as tf
 
 from .base import base
 from os.path import join 
-from datetime import datetime
 from core.tools import tfSummary
 from tensorflow import keras
-from keras.models import Sequential, load_model
-from keras.layers import Dense
-from keras.optimizers import Adam
+from keras.models import load_model
 from core.replay_experience import Transition
 
 from pdb import set_trace as debug
@@ -26,14 +22,14 @@ class DQNAgent(base):
         epsilon_min = 0.01, epsilon_decay = 0.995, exploration_fraction=0.1, update_timesteps= 50, tau=0.01, 
         learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps=500, learning_starts = 1000, 
         action_replay=False, render=False, explainer_updates = 256, explainer_summarizing=25, val_eps = 10,
-        val_numtimesteps = 1000, summarize_shap = True, num_to_explain = 5, 
+        val_numtimesteps = 1000, summarize_shap = True, num_to_explain = 5, making_a_gif=250, gif_length = 500,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models'):
         
         super(DQNAgent, self).__init__(
             env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
             epsilon, epsilon_min, epsilon_decay, exploration_fraction, update_timesteps,
             logger_steps, learning_starts, action_replay, render, model_name, save_paths,
-            val_eps, val_numtimesteps
+            val_eps, val_numtimesteps, making_a_gif, gif_length
             )
         
 
@@ -175,11 +171,14 @@ class DQNAgent(base):
 
                     self._num_episodes = 0
                     
+                if (tt+1)%self.gif_logger_step == 0:
+                    self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
                                 
             if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
                 self.epsilon *= self.epsilon_decay
 
             self.summary_writer.flush()
+        self.env.close()
 
     def create_gif(self, frames=500, fps=29, save='model'):
         """
