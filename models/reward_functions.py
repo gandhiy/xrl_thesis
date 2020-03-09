@@ -23,11 +23,9 @@ class reward:
         self.predictor = new_predictor
     
     def shap_predict(self, P):
-        l = []
-        for x in P:
-            l.append(self.predictor(x))
-        return np.array(l, dtype='float32')
+        return self.predictor.predict(P)
 
+   
 
 class SHAP(reward):
     def __init__(self, predictor):
@@ -41,6 +39,7 @@ class SHAP(reward):
             x_train = shap.kmeans(x_train, kwargs['num_explainer_summaries'])
             kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
 
+
         return kwargs['explainer'].shap_values(x_test, nsamples=10, l1_reg='aic', silent=True)
 
 
@@ -49,17 +48,17 @@ class additive_SHAP(SHAP):
         super(additive_SHAP, self).__init__(predictor)
 
     def reward_function(self, batch, **kwargs):
+
         shap_vals = self.get_shap_vals(batch, **kwargs)
         self.plot_shap_vals(kwargs['summary_writer'], shap_vals, kwargs['_current_timesteps'])
-        
-        total_val = np.sum((np.sum(shap_vals, axis=0)/len(shap_vals)))
+        total_val = np.mean(np.abs(shap_vals))
         tv = tfSummary('training/shap_reward', total_val)
         kwargs['summary_writer'].add_summary(tv, kwargs['_current_timestep'])
         return total_val, kwargs
     
     def plot_shap_vals(self, writer, vals, tt):
         for i, a_list in enumerate(vals):
-            per_obs_mean = np.mean(np.obs(a_list), axis=0)
+            per_obs_mean = np.mean(np.abs(a_list), axis=0)
             for j, obs in enumerate(per_obs_mean):
                 writer.add_summary(
                     tfSummary(f'shap_vals/obs_{j}_act_{i}', obs),

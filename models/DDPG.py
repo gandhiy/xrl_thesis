@@ -20,13 +20,13 @@ class DDPGAgent(base):
         tau=0.01, learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps = 500,
         learning_starts = 500, action_replay=False, render=False, explainer_updates=256, explainer_summarizing=25,
         summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000, making_a_gif=250, gif_length = 500,
-        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models'):
+        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False):
 
         super(DDPGAgent, self).__init__(
             env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
             epsilon, epsilon_min, epsilon_decay, exploration_fraction, update_timesteps,
             logger_steps, learning_starts, action_replay, render, model_name, save_paths, val_eps, 
-            val_numtimesteps, making_a_gif, gif_length
+            val_numtimesteps, gifs, making_a_gif, gif_length
 
         )
 
@@ -107,8 +107,8 @@ class DDPGAgent(base):
 
     
         
-    def shap_predict(self, st):
-        return self.behavior_predict(st)
+    def shap_predictor(self):
+        return self.behavior_pi
 
 
     def transfer_weights(self):
@@ -173,7 +173,7 @@ class DDPGAgent(base):
 
 
     def learn(self, total_timesteps):
-        self.reward_function = self.reward_class(self.shap_predict).reward_function
+        self.reward_function = self.reward_class(self.shap_predictor()).reward_function
         st = self.env.reset()
         assert self.learning_starts < total_timesteps
         
@@ -207,7 +207,7 @@ class DDPGAgent(base):
 
                     self._num_episodes = 0
                     
-                if (tt+1)%self.gif_logger_step == 0:
+                if (tt+1)%self.gif_logger_step == 0 and self.gif:
                     self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
 
 

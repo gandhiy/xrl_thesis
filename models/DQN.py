@@ -24,13 +24,13 @@ class DQNAgent(base):
         learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps=500, learning_starts = 1000, 
         action_replay=False, render=False, explainer_updates = 256, explainer_summarizing=25, val_eps = 10,
         val_numtimesteps = 1000, summarize_shap = True, num_to_explain = 5, making_a_gif=250, gif_length = 500,
-        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models'):
+        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False):
         
         super(DQNAgent, self).__init__(
             env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
             epsilon, epsilon_min, epsilon_decay, exploration_fraction, update_timesteps,
             logger_steps, learning_starts, action_replay, render, model_name, save_paths,
-            val_eps, val_numtimesteps, making_a_gif, gif_length
+            val_eps, val_numtimesteps, gifs, making_a_gif, gif_length
             )
         
 
@@ -58,7 +58,9 @@ class DQNAgent(base):
         self.save_path = join(self.save_path, 'DQN{}'.format(len(files) + 1))
         logdir = join(self.save_path, 'tensorboard_logs')
         self.summary_writer = tf.summary.FileWriter(logdir)
-
+        if(self.gif):
+            gifdir = join(self.save_path, 'gifs')
+            os.makedirs(gifdir, exist_ok=True)
         
         # explainer parameters
         self.explainer = None
@@ -88,8 +90,8 @@ class DQNAgent(base):
             [self.tau*l1 + (1 - self.tau)*l2 for l1, l2 in zip(self.target.get_weights(), self.behavior.get_weights())]
         )
 
-    def shap_predict(self, st):
-            return np.argmax(self.behavior.predict(np.expand_dims(st, axis=0)))
+    def shap_predictor(self):
+        return self.behavior
 
 
     def behavior_predict(self, state, single_obs=False):
@@ -122,7 +124,7 @@ class DQNAgent(base):
     
 
     def learn(self, total_timesteps=10000):
-        self.reward_function = self.reward_class(self.shap_predict).reward_function
+        self.reward_function = self.reward_class(self.shap_predictor()).reward_function
         st = self.env.reset()
         assert self.learning_starts < total_timesteps
         
@@ -172,7 +174,7 @@ class DQNAgent(base):
 
                     self._num_episodes = 0
                     
-                if (tt+1)%self.gif_logger_step == 0:
+                if (tt+1)%self.gif_logger_step == 0 and self.gif:
                     self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
                                 
             if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
@@ -187,7 +189,7 @@ class DQNAgent(base):
         """
         images = []
         obs = self.env.reset()
-        img = self.env.render(mode='rgb_array')
+        img = self.env.render(mode='rgb_array', )
 
         eps_rew = 0
         episode = 1

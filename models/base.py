@@ -13,7 +13,7 @@ class base:
     def __init__(
         self, env, lr, b1, b2, tau, bs, g, ms, e, em, 
         ed, ef, up_t, lg_t, ls, ar, ren, name, path,
-        ve, vt, gif, gl
+        ve, vt, make_gif, gif, gl 
         ):
         self.model_name = name
         self.save_path = path
@@ -35,6 +35,7 @@ class base:
         self.learning_starts = ls
         self.action_replay = ar
         self.render = ren
+        self.gif = make_gif
         self.gif_logger_step = gif
         self.gif_frames = gl
 
