@@ -50,7 +50,8 @@ class additive_SHAP(SHAP):
     def reward_function(self, batch, **kwargs):
 
         shap_vals = self.get_shap_vals(batch, **kwargs)
-        self.plot_shap_vals(kwargs['summary_writer'], shap_vals, kwargs['_current_timesteps'])
+        self.plot_shap_vals(kwargs['summary_writer'], shap_vals, kwargs['_current_timestep'])
+
         total_val = np.mean(np.abs(shap_vals))
         tv = tfSummary('training/shap_reward', total_val)
         kwargs['summary_writer'].add_summary(tv, kwargs['_current_timestep'])

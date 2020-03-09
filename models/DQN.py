@@ -24,13 +24,13 @@ class DQNAgent(base):
         learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps=500, learning_starts = 1000, 
         action_replay=False, render=False, explainer_updates = 256, explainer_summarizing=25, val_eps = 10,
         val_numtimesteps = 1000, summarize_shap = True, num_to_explain = 5, making_a_gif=250, gif_length = 500,
-        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False):
+        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000):
         
         super(DQNAgent, self).__init__(
             env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
             epsilon, epsilon_min, epsilon_decay, exploration_fraction, update_timesteps,
             logger_steps, learning_starts, action_replay, render, model_name, save_paths,
-            val_eps, val_numtimesteps, gifs, making_a_gif, gif_length
+            val_eps, val_numtimesteps, gifs, making_a_gif, gif_length, save_step
             )
         
 
@@ -177,6 +177,11 @@ class DQNAgent(base):
                 if (tt+1)%self.gif_logger_step == 0 and self.gif:
                     self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
                                 
+                if (tt+1)%self.save_log == 0:
+                    p = join(self.save_path, f'timesteps_{tt}')
+                    os.makedirs(p, exist_ok = True)
+                    self.save(p)
+                
             if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
                 self.epsilon *= self.epsilon_decay
 
@@ -189,7 +194,7 @@ class DQNAgent(base):
         """
         images = []
         obs = self.env.reset()
-        img = self.env.render(mode='rgb_array', )
+        img = self.env.render(mode='rgb_array')
 
         eps_rew = 0
         episode = 1
@@ -228,9 +233,9 @@ class DQNAgent(base):
         return reward/self.num_validation_episode, episode_length/self.num_validation_episode
         
 
-    def save(self):
-        self.behavior.save(join(self.save_path, 'behavior.h5'))
-        self.target.save(join(self.save_path, 'target.h5'))
+    def save(self, path):
+        self.behavior.save(join(path, 'behavior.h5'))
+        self.target.save(join(path, 'target.h5'))
 
     def load(self, path):
         self.behavior = load_model(join(path, 'behavior.h5'))
