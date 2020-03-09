@@ -2,7 +2,10 @@
 Extra tools 
 """
 
+
 import numpy as np
+import pickle
+import tensorflow as tf
 
 def test_model(env, model, parameters):
     """
@@ -60,3 +63,11 @@ def test_model(env, model, parameters):
     
     
     return results
+
+
+def load_model(path):
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
+def tfSummary(tag, val):
+    return tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=val)])
