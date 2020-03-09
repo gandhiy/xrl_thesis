@@ -1,5 +1,5 @@
 *.gif
 *.DS_Store
 notebooks/
-*__pycache__*
+*__pycache__/*
 *.pyc
