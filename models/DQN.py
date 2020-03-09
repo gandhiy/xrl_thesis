@@ -10,6 +10,7 @@ from os.path import join
 from core.tools import tfSummary
 from tensorflow import keras
 from keras.models import load_model
+from keras.optimizers import Adam
 from core.replay_experience import Transition
 
 from pdb import set_trace as debug
