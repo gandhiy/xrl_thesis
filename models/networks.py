@@ -11,6 +11,7 @@ from keras.layers import Softmax, MaxPool2D
 from keras.optimizers import Adam
 from keras.initializers import RandomUniform
 
+from pdb import set_trace as debug
 
 # for DQN
 class MlpPolicy:
@@ -125,7 +126,8 @@ class Actor:
         out = Dense(self.act_shape, activation='tanh', kernel_initializer=RandomUniform())(x)
         
         # set to the correct range
-        out = Lambda(lambda i: i * self.act_range)(out)
+        act_range = self.act_range
+        out = Lambda(lambda i: i * act_range)(out)
         self.model= Model(inp, out)
         
     def __build_opt__(self, lr, b1, b2):

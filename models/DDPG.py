@@ -30,9 +30,6 @@ class DDPGAgent(base):
 
         )
 
-
-
-
         if(len(self.env.action_space.shape)>0):
             # setup models and optimizers
             self.behavior_q = Critic(self.env.observation_space.shape, self.env.action_space.shape)
@@ -58,12 +55,12 @@ class DDPGAgent(base):
             self.target_q = Critic(self.env.observation_space.shape, self.env.action_space.n)
             self.target_q.init_model()
 
-            self.behavior_pi = Actor(self.env.observation_space.shape, self.env.action_space.n)
+            self.behavior_pi = Actor(self.env.observation_space.shape, self.env.action_space.n, self.env.action_space.high)
             self.behavior_pi.init_model()
             self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2)
             self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
 
-            self.target_pi = Actor(self.env.observation_space.shape, self.env.action_space.n, self.evn.action_space.high)
+            self.target_pi = Actor(self.env.observation_space.shape, self.env.action_space.n, self.env.action_space.high)
             self.target_pi.init_model()
 
         self.transfer_weights()
@@ -84,10 +81,6 @@ class DDPGAgent(base):
         
         self.reward_class = reward_class
         self.reward_function = None
-
-
-
-
 
 
     def act(self, st):
@@ -165,8 +158,9 @@ class DDPGAgent(base):
         # gets the gradient of the critic output with respect to the input actions
         action_grads = self.get_critic_grad([states, acts])
         # apply gradients 
-        self.behavior_pi_AdamOpt([batch.state, np.array(action_grads).reshape(-1, self.env.action_space.shape[0])])
-       
+        mean_grads = self.behavior_pi_AdamOpt([batch.state, np.array(action_grads).reshape(-1, self.env.action_space.shape[0])])
+        mg = tfSummary('training/mean_grad', mean_grads[0])       
+        self.summary_writer.add_summary(mg, self._current_timestep)
         
         return ret
 
@@ -176,7 +170,10 @@ class DDPGAgent(base):
         self.reward_function = self.reward_class(self.shap_predictor()).reward_function
         st = self.env.reset()
         assert self.learning_starts < total_timesteps
-        
+        eps = tfSummary('training/epsilon', self.epsilon)
+        self.summary_writer.add_summary(eps, 0)
+        best_val_score = -np.inf
+
         for tt in range(total_timesteps):
             self.update_dictionary()
             self._current_timestep = tt
@@ -196,6 +193,12 @@ class DDPGAgent(base):
             
                 if (tt+1)%self.logging_step == 0:
                     val_avg_rew, val_avg_eps = self.validate()
+                    if(val_avg_rew > best_val_score):
+                        best_val_score = val_avg_rew
+                        p = join(self.save_path, 'best_model')
+                        os.makedirs(p, exist_ok=True)
+                        self.save(p)
+
                     
                     r = tfSummary('validation/average_{}_episode_reward'.format(
                         self.num_validation_episode
@@ -211,13 +214,15 @@ class DDPGAgent(base):
                     self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
 
                 if (tt+1)%self.save_log == 0:
-                    p = join(self.save_path, f'timesteps_{tt}')
+                    p = join(self.save_path, f'timesteps_{tt + 1}')
                     os.makedirs(p, exist_ok=True)
                     self.save(p)
 
 
             if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
                 self.epsilon *= self.epsilon_decay
+                eps = tfSummary('training/epsilon', self.epsilon)
+                self.summary_writer.add_summary(eps, tt)
             
             self.summary_writer.flush()
         self.env.close()
@@ -269,14 +274,14 @@ class DDPGAgent(base):
         return reward/self.num_validation_episode, episode_length/self.num_validation_episode
 
     def save(self, path):
-        self.behavior_pi.save(join(path, 'behavior_pi.h5'))
-        self.behavior_q.save(join(path, 'behavior_q.h5'))
-        self.target_pi.save(join(path, 'target_pi.h5'))
-        self.target_q.save(join(path, 'target_p.h5'))
+        self.behavior_pi.model.save(join(path, 'behavior_pi.h5'))
+        self.behavior_q.model.save(join(path, 'behavior_q.h5'))
+        self.target_pi.model.save(join(path, 'target_pi.h5'))
+        self.target_q.model.save(join(path, 'target_p.h5'))
 
 
     def load(self, path):
-        self.behavior_pi.load(join(path, 'behavior_pi.h5'))
-        self.behavior_q.load(join(path, 'behavior_q.h5'))
-        self.target_pi.load(join(path, 'target_pi.h5'))
-        self.target_q.load(join(path, 'target_q.h5'))
+        self.behavior_pi.model = load_model(join(path, 'behavior_pi.h5'))
+        self.behavior_q.model = load_model(join(path, 'behavior_q.h5'))
+        self.target_pi.model = load_model(join(path, 'target_pi.h5'))
+        self.target_q.model = load_model(join(path, 'target_q.h5'))

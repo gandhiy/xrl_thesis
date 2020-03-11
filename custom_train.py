@@ -7,6 +7,7 @@ import pickle
 from os.path import join
 from argparse import ArgumentParser
 from models.DQN import DQNAgent
+from models.DDPG import DDPGAgent
 from models.networks import MlpPolicy, CNNPolicy
 from models.reward_functions import Identity, additive_SHAP
 
@@ -30,11 +31,19 @@ def main(configs):
     
     model_building_configs = configs['model_building_parameters']
     
-
-    model = DQNAgent(env, 
+    
+    if(configs['model'].casefold() == "DQN".casefold()):
+        model = DQNAgent(env, 
                     policy, 
                     reward,
                     **model_building_configs)
+    elif(configs['model'].casefold() == 'DDPG'.casefold()):
+        model = DDPGAgent(
+                env, 
+                reward,
+                **model_building_configs)
+    else:
+        raise AttributeError("need to specify a model to train either ['DQN', 'DDPG']")
 
 
     if(configs['reload']):

@@ -127,6 +127,9 @@ class DQNAgent(base):
         self.reward_function = self.reward_class(self.shap_predictor()).reward_function
         st = self.env.reset()
         assert self.learning_starts < total_timesteps
+        eps = tfSummary('training/epsilon', self.epsilon)
+        self.summary_writer.add_summary(eps, 0)
+        best_val_score = -np.inf
         
         for tt in range(total_timesteps):
             self.update_dictionary()
@@ -166,6 +169,12 @@ class DQNAgent(base):
                 if((tt+1)%self.logging_step == 0):
                     
                     val_avg_rew, val_avg_eps = self.validate()
+                    if(val_avg_rew > best_val_score):
+                        best_val_score = val_avg_rew
+                        p = join(self.save_path, 'best_model')
+                        os.makedirs(p, exist_ok = True)
+                        self.save(p)
+                    
                     r = tfSummary('validation/average_{}_episode_reward'.format(self.num_validation_episode), val_avg_rew)
                     self.summary_writer.add_summary(r, tt)
 
@@ -178,12 +187,15 @@ class DQNAgent(base):
                     self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
                                 
                 if (tt+1)%self.save_log == 0:
-                    p = join(self.save_path, f'timesteps_{tt}')
+                    p = join(self.save_path, f'timesteps_{tt + 1}')
                     os.makedirs(p, exist_ok = True)
                     self.save(p)
                 
             if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
                 self.epsilon *= self.epsilon_decay
+                eps = tfSummary('training/epsilon', self.epsilon)
+                self.summary_writer.add_summary(eps, tt)
+
 
             self.summary_writer.flush()
         self.env.close()
