@@ -12,7 +12,7 @@ class base:
 
     def __init__(
         self, env, lr, b1, b2, tau, bs, g, ms, e, em, 
-        ed, ef, up_t, lg_t, ls, ar, ren, name, path,
+        ed, ef, dt, up_t, lg_t, ls, ar, ren, name, path,
         ve, vt, make_gif, gif, gl, ss
         ):
         self.model_name = name
@@ -30,6 +30,7 @@ class base:
         self.epsilon_min = em
         self.epsilon_decay = ed
         self.exploration_fraction = ef
+        self.decay_timestep = dt
         self.update_timesteps = up_t
         self.logging_step = lg_t
         self.learning_starts = ls

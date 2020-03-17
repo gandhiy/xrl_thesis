@@ -2,12 +2,7 @@
 
 
 ### Tested
-- A2C with atari environment and a step parameter on timesteps
-- PPO1 with mujoco humanoid environment, but no multi dictionary parameter and no render
-- PPO1 with mujoco humanoid environment with render testing, but no multi dictionary parameter
-- PPO1 does not have a replay buffer.
-- shap values without using replay buffer
-- main algo works on brute! 
+
 
 
 
@@ -16,8 +11,7 @@
 
 
 ### Need to work on
-- tb logging and also displaying an intermediate rendering step
-- shap values with/without weighted backgrounds
+
 
 
 
@@ -41,6 +35,10 @@ Run inside of gym/
 pip install -e .[mujoco] && pip install -e .[robotics]
 ```
 
+* using nightly stable-baselines (2.10.0a0) to be able to implement custom callback with CallBack List
+
+* auto set saved path to saved_model folder. To change, set `model_path` in `~/models/base.py`. 
+
 * go back to pybullet at somepoint
 * project uses mujoco, atari, robotics, and other envs
 
@@ -52,7 +50,9 @@ pip install -e .[mujoco] && pip install -e .[robotics]
 - [x] build permutations from all arrays
 - [x] build all possible dictionaries
 - [x] add shap value callback 
-- [ ] allow config to set the value of the number of shap training and testing samples
+- [x] allow config to set the value of the number of shap training and testing samples
+- [x] custom DQN Network
+- [x] custom DDPG Network
 - [ ] hyper parameter tune a model on a environment
 - [ ] hyper parameter tune a model on multiple (acceptable) environments
 - [ ] add shap value parameter

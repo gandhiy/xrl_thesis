@@ -45,9 +45,8 @@ class CNNPolicy:
         self.model.add(Dense(act_size))
         
 
-
 # DDPG Actor & Critic networks
-class Critic:
+class DDPGCritic:
     def __init__(self, obs_shape, act_shape, *args):
         self.obs_shape = obs_shape
         self.act_shape = act_shape
@@ -101,10 +100,9 @@ class Critic:
 
     def load(self, path):
         self.model = load_model(path)
-
    
 
-class Actor:
+class DDPGActor:
     def __init__(self, obs_shape, act_shape, act_range):
         self.obs_shape = obs_shape
         

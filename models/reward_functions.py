@@ -1,7 +1,6 @@
 import shap
 import numpy as np
 
-from core.tools import tfSummary
 
 from pdb import set_trace as debug
 
@@ -50,18 +49,17 @@ class additive_SHAP(SHAP):
     def reward_function(self, batch, **kwargs):
 
         shap_vals = self.get_shap_vals(batch, **kwargs)
-        self.plot_shap_vals(kwargs['summary_writer'], shap_vals, kwargs['_current_timestep'])
+        kwargs['state'].update(self.plot_shap_vals(shap_vals))
 
         total_val = np.mean(np.abs(shap_vals))
-        tv = tfSummary('training/shap_reward', total_val)
-        kwargs['summary_writer'].add_summary(tv, kwargs['_current_timestep'])
+        kwargs['state']['training/shap_reward'] = total_val
+    
         return total_val, kwargs
     
-    def plot_shap_vals(self, writer, vals, tt):
+    def plot_shap_vals(self, vals):
+        out_state = {}
         for i, a_list in enumerate(vals):
             per_obs_mean = np.mean(np.abs(a_list), axis=0)
             for j, obs in enumerate(per_obs_mean):
-                writer.add_summary(
-                    tfSummary(f'shap_vals/obs_{j}_act_{i}', obs),
-                    tt
-                )
+                out_state[f'shap_vals/obs_{j}_act_{i}'] = obs
+        return out_state

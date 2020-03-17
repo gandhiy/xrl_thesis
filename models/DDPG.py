@@ -6,8 +6,9 @@ import tensorflow as tf
 
 from .base import base
 from os.path import join
-from .networks import Actor, Critic
-from core.tools import tfSummary
+from .networks import DDPGActor as Actor
+from .networks import DDPGCritic as Critic
+from core.tools import summary
 from keras.models import load_model
 from core.replay_experience import Transition
 
@@ -69,7 +70,8 @@ class DDPGAgent(base):
         files = [f for f in os.listdir(self.save_path) if 'DDPG' in f]
         self.save_path = join(self.save_path, 'DDPG{}'.format(len(files) + 1))
         logdir = join(self.save_path, 'tensorboard_logs')
-        self.summary_writer = tf.summary.FileWriter(logdir)
+        self.writer = summary(tf.summary.FileWriter(logdir))
+        self.state = {}
 
         # explainer parameters
         self.explainer = None
@@ -159,8 +161,9 @@ class DDPGAgent(base):
         action_grads = self.get_critic_grad([states, acts])
         # apply gradients 
         mean_grads = self.behavior_pi_AdamOpt([batch.state, np.array(action_grads).reshape(-1, self.env.action_space.shape[0])])
-        mg = tfSummary('training/mean_grad', mean_grads[0])       
-        self.summary_writer.add_summary(mg, self._current_timestep)
+        
+        self.state['training/mean_grad'] = mean_grads[0]  
+        
         
         return ret
 
@@ -170,23 +173,21 @@ class DDPGAgent(base):
         self.reward_function = self.reward_class(self.shap_predictor()).reward_function
         st = self.env.reset()
         assert self.learning_starts < total_timesteps
-        eps = tfSummary('training/epsilon', self.epsilon)
-        self.summary_writer.add_summary(eps, 0)
+
+        
         best_val_score = -np.inf
 
         for tt in range(total_timesteps):
             self.update_dictionary()
-            self._current_timestep = tt
+            self.state['timestep'] = tt
             st = self.act(st)
             
             if(self.memory.can_sample(self.batch_size) and tt > self.learning_starts):
                 loss = self.update_on_batch()   
 
-                l = tfSummary('training/critic_loss', loss[0])
-                self.summary_writer.add_summary(l, tt)
+                self.state['training/critic_loss'] = loss[0]
 
-                mr = tfSummary('training/average_reward', self._mean_eps_rew)
-                self.summary_writer.add_summary(mr, tt)
+                
                 if (tt+1)%self.update_timesteps == 0:
                     self.transfer_weights()
                     
@@ -199,16 +200,10 @@ class DDPGAgent(base):
                         os.makedirs(p, exist_ok=True)
                         self.save(p)
 
-                    
-                    r = tfSummary('validation/average_{}_episode_reward'.format(
-                        self.num_validation_episode
-                    ), val_avg_rew)
-                    self.summary_writer.add_summary(r, tt)
+                    self.state[f'validation/average_{self.num_validation_episode}_episode_reward'] = val_avg_rew
+                    self.state['validation/average_episode_length'] = val_avg_eps
 
-                    e = tfSummary('validation/average_episode_length', val_avg_eps)
-                    self.summary_writer.add_summary(e, tt)
 
-                    self._num_episodes = 0
                     
                 if (tt+1)%self.gif_logger_step == 0 and self.gif:
                     self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
@@ -221,10 +216,10 @@ class DDPGAgent(base):
 
             if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
                 self.epsilon *= self.epsilon_decay
-                eps = tfSummary('training/epsilon', self.epsilon)
-                self.summary_writer.add_summary(eps, tt)
             
-            self.summary_writer.flush()
+            self.state['training/epsilon'] = self.epsilon
+            
+            self.writer.update(self.state)
         self.env.close()
         
 

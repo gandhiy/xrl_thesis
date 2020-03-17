@@ -69,5 +69,15 @@ def load_model(path):
     with open(path, 'rb') as f:
         return pickle.load(f)
 
-def tfSummary(tag, val):
-    return tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=val)])
+
+class summary:
+    def __init__(self, writer):
+        self.writer = writer
+        
+    def update(self, state):
+        timestep = state['timestep']
+        for k,v in state.items():
+            if(k is not 'timestep'):
+                x = tf.Summary(value=[tf.Summary.Value(tag = k, simple_value=v)])
+                self.writer.add_summary(x, timestep)
+        self.writer.flush()
