@@ -69,6 +69,7 @@ class base:
 
     def act_once(self, at, st):
         snext, rt, done, _ = self.env.step(at)
+
         if done:
             self._num_episodes += 1
             self._eps_rew_list.append(self._eps_rew)

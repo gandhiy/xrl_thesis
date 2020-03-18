@@ -4,7 +4,7 @@ import imageio
 import numpy as np 
 import tensorflow as tf
 
-
+from copy import deepcopy
 from .base import base
 from os.path import join 
 from core.tools import summary
@@ -226,16 +226,17 @@ class DQNAgent(base):
                     
 
     def validate(self):
+        env = deepcopy(self.env)
         reward = 0
         episode_length = 0
-        obs = self.env.reset()
+        obs = env.reset()
         for _ in range(self.num_validation_episode):
             for j in range(self.num_validation_timesteps):
                 a = np.argmax(self.target_predict(obs, single_obs=True))
-                obs, r, done, _ = self.env.step(a)
+                obs, r, done, _ = env.step(a)
                 reward += r
                 if(done):
-                    obs = self.env.reset()
+                    obs = env.reset()
                     episode_length += (j + 1)
                     break
         

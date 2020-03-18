@@ -4,6 +4,7 @@ import imageio
 import numpy as np
 import tensorflow as tf
 
+from copy import deepcopy
 from .base import base
 from os.path import join
 from .networks import DDPGActor as Actor
@@ -18,7 +19,7 @@ class DDPGAgent(base):
     def __init__(
         self, env, reward_class, model_name='temp', batch_size=256, memory_size=1028, gamma=0.95, epsilon = 1.0, 
         epsilon_min=0.01, epsilon_decay=0.995, exploration_fraction=0.1, decay_timesteps=100, update_timesteps=50, 
-        tau=0.01, learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps = 500,
+        tau=0.01, learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, clipping=0.5, logger_steps = 500,
         learning_starts = 500, action_replay=False, render=False, explainer_updates=256, explainer_summarizing=25,
         summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000, making_a_gif=250, gif_length = 500,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000):
@@ -31,42 +32,36 @@ class DDPGAgent(base):
 
         )
 
-        if(len(self.env.action_space.shape)>0):
-            # setup models and optimizers
-            self.behavior_q = Critic(self.env.observation_space.shape, self.env.action_space.shape)
-            self.behavior_q.init_model()
-            self.behavior_q.build_opt(self.learning_rate, self.beta_1, self.beta_2)
-            
-            self.target_q = Critic(self.env.observation_space.shape, self.env.action_space.shape)
-            self.target_q.init_model()
+        
 
-            
-            self.behavior_pi = Actor(self.env.observation_space.shape, self.env.action_space.shape, self.env.action_space.high)
-            self.behavior_pi.init_model()
-            self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2)
-            self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
-            
-            self.target_pi = Actor(self.env.observation_space.shape, self.env.action_space.shape, self.env.action_space.high)
-            self.target_pi.init_model()
+        if(len(self.env.action_space.shape) > 0):
+            envShape = self.env.action_space.shape 
         else:
-            self.behavior_q = Critic(self.env.observation_space.shape, self.env.action_space.n)
-            self.behavior_q.init_model()
-            self.behavior_q.build_opt(self.learning_rate, self.beta_1, self.beta_2)
+            envShape = self.env.action_space.n
 
-            self.target_q = Critic(self.env.observation_space.shape, self.env.action_space.n)
-            self.target_q.init_model()
+        ### Set up behavior Q ###
+        self.behavior_q = Critic(self.env.observation_space.shape, envShape)
+        self.behavior_q.init_model()
+        self.behavior_q.build_opt(self.learning_rate, self.beta_1, self.beta_2)
+        
+        ### Set up target Q ###
+        self.target_q = Critic(self.env.observation_space.shape, envShape)
+        self.target_q.init_model()
 
-            self.behavior_pi = Actor(self.env.observation_space.shape, self.env.action_space.n, self.env.action_space.high)
-            self.behavior_pi.init_model()
-            self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2)
-            self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
+        ### Set up behavior pi ###
+        self.behavior_pi = Actor(self.env.observation_space.shape, envShape, self.env.action_space.high)
+        self.behavior_pi.init_model()
+        self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2, clipping)
+        self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
 
-            self.target_pi = Actor(self.env.observation_space.shape, self.env.action_space.n, self.env.action_space.high)
-            self.target_pi.init_model()
+        ### Set up target pi ###
+        self.target_pi = Actor(self.env.observation_space.shape, envShape, self.env.action_space.high)
+        self.target_pi.init_model()
+ 
 
         self.transfer_weights()
         
-
+        # Set up tb logging
         files = [f for f in os.listdir(self.save_path) if 'DDPG' in f]
         self.save_path = join(self.save_path, 'DDPG{}'.format(len(files) + 1))
         logdir = join(self.save_path, 'tensorboard_logs')
@@ -83,11 +78,12 @@ class DDPGAgent(base):
         
         self.reward_class = reward_class
         self.reward_function = None
+        
 
 
     def act(self, st):
         
-        if np.random.rand() <=self.epsilon:
+        if np.random.rand() <= self.epsilon:
             at = self.env.action_space.sample()
         else:
             at = self.behavior_pi.predict(st)[0]
@@ -143,12 +139,12 @@ class DDPGAgent(base):
 
         y = self.target_q.model.predict([states_tp1, actions_tp1])
         y *= self.gamma
-        y *= mask
+        # y *= mask
         
         # apply shap updates here if desired
-        tmp, self._parameter_dict = self.reward_function(batch, **self._parameter_dict)
+        r, self._parameter_dict = self.reward_function(batch, **self._parameter_dict)
         
-        y += np.array(tmp).reshape((-1, 1))
+        y += np.array(r).reshape((-1, 1))
         history = self.behavior_q.model.fit([states, actions], y, verbose=0)
 
         self.state['training/critic_accuracy'] = history.history['accuracy'][0]
@@ -177,22 +173,21 @@ class DDPGAgent(base):
         
         best_val_score = -np.inf
 
-        for tt in range(total_timesteps):
+        for tt in range(total_timesteps):  
             self.update_dictionary()
             self.state['timestep'] = tt
-            st = self.act(st)
+            st = self.act(st) 
+            
             
             if(self.memory.can_sample(self.batch_size) and tt > self.learning_starts):
                 self.update_on_batch()   
-
-
                 
                 if (tt+1)%self.update_timesteps == 0:
                     self.transfer_weights()
                     
-            
                 if (tt+1)%self.logging_step == 0:
                     val_avg_rew, val_avg_eps = self.validate()
+
                     if(val_avg_rew > best_val_score):
                         best_val_score = val_avg_rew
                         p = join(self.save_path, 'best_model')
@@ -219,6 +214,7 @@ class DDPGAgent(base):
             self.state['training/epsilon'] = self.epsilon
             
             self.writer.update(self.state)
+        
         self.env.close()
         
 
@@ -258,19 +254,20 @@ class DDPGAgent(base):
 
 
     def validate(self):
+        env = deepcopy(self.env)
         reward = 0
         episode_length = 0
-        obs = self.env.reset()
+        obs = env.reset()
         for _ in range(self.num_validation_episode):
             for j in range(self.num_validation_timesteps):
-                a = self.predict(obs)[0]
-                obs, r, done, _ = self.env.step(a)
+                a = self.target_predict(obs)[0]
+                obs, r, done, _ = env.step(a)
                 reward += r
                 if(done):
-                    obs = self.env.reset()
+                    obs = env.reset()
                     episode_length += (j + 1)
                     break
-        
+
         return reward/self.num_validation_episode, episode_length/self.num_validation_episode
 
     def save(self, path):
