@@ -17,15 +17,15 @@ from pdb import set_trace as debug
 class DDPGAgent(base):
     def __init__(
         self, env, reward_class, model_name='temp', batch_size=256, memory_size=1028, gamma=0.95, epsilon = 1.0, 
-        epsilon_min=0.01, epsilon_decay=0.995, exploration_fraction=0.1, update_timesteps=50, 
+        epsilon_min=0.01, epsilon_decay=0.995, exploration_fraction=0.1, decay_timesteps=100, update_timesteps=50, 
         tau=0.01, learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps = 500,
         learning_starts = 500, action_replay=False, render=False, explainer_updates=256, explainer_summarizing=25,
         summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000, making_a_gif=250, gif_length = 500,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000):
 
         super(DDPGAgent, self).__init__(
-            env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
-            epsilon, epsilon_min, epsilon_decay, exploration_fraction, update_timesteps,
+            env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size, 
+            epsilon, epsilon_min, epsilon_decay, exploration_fraction, decay_timesteps, update_timesteps,
             logger_steps, learning_starts, action_replay, render, model_name, save_paths, val_eps, 
             val_numtimesteps, gifs, making_a_gif, gif_length, save_step
 
@@ -139,7 +139,7 @@ class DDPGAgent(base):
         #### CRITIC UPDATE ####
         
         # bellman update
-        mask = np.ones(self.batch_size)*([not l for l in batch.done])
+        mask = np.ones(self.batch_size) * ([not l for l in batch.done])
         mask = mask.reshape((-1, 1))
 
         y = self.target_q.model.predict([states_tp1, actions_tp1])
@@ -213,9 +213,9 @@ class DDPGAgent(base):
                     os.makedirs(p, exist_ok=True)
                     self.save(p)
 
-
-            if self.epsilon > self.epsilon_min and tt < (self.exploration_fraction*total_timesteps):
-                self.epsilon *= self.epsilon_decay
+            if(tt < self.exploration_fraction * total_timesteps):
+                if self.epsilon > self.epsilon_min and tt%self.decay_timestep == 0:
+                    self.epsilon *= self.epsilon_decay
             
             self.state['training/epsilon'] = self.epsilon
             

@@ -20,7 +20,7 @@ from pdb import set_trace as debug
 class DQNAgent(base):
     def __init__(
         self, env, policy, reward_class, model_name='temp', batch_size = 256, memory_size=1028, gamma = 0.95, epsilon = 1.0,
-        epsilon_min = 0.01, epsilon_decay = 0.995, decay_timestep=500, exploration_fraction=0.1, update_timesteps= 50, tau=0.01, 
+        epsilon_min = 0.01, epsilon_decay = 0.995, decay_timesteps=500, exploration_fraction=0.1, update_timesteps= 50, tau=0.01, 
         learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps=500, learning_starts = 1000, double=True,
         action_replay=False, render=False, explainer_updates = 256, explainer_summarizing=25, val_eps = 10,
         val_numtimesteps = 1000, summarize_shap = True, num_to_explain = 5, making_a_gif=250, gif_length = 500,
@@ -28,7 +28,7 @@ class DQNAgent(base):
         
         super(DQNAgent, self).__init__(
             env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
-            epsilon, epsilon_min, epsilon_decay, exploration_fraction, decay_timestep, update_timesteps,
+            epsilon, epsilon_min, epsilon_decay, exploration_fraction, decay_timesteps, update_timesteps,
             logger_steps, learning_starts, action_replay, render, model_name, save_paths,
             val_eps, val_numtimesteps, gifs, making_a_gif, gif_length, save_step
             )
