@@ -61,7 +61,7 @@ class DDPGCritic:
         for m in model_params[1:]:
             x = Dense(m, activation='relu')(x)
             x = BatchNormalization()(x)
-        out = Dense(1, activation='linear', kernel_initializer=RandomUniform())(x)
+        out = Dense(1, activation='softmax', kernel_initializer=RandomUniform())(x)
         self.model = Model([inp_1, inp_2], out)
         
     def __build_opt__(self, lr, b1, b2):
@@ -77,7 +77,7 @@ class DDPGCritic:
     
     
     def build_opt(self, learning_rate, beta_1, beta_2):
-        self.model.compile(optimizer=self.__build_opt__(learning_rate, beta_1, beta_2), loss='mse')
+        self.model.compile(optimizer=self.__build_opt__(learning_rate, beta_1, beta_2), loss='mse', metrics=['accuracy'])
    
     
     def predict(self, st, at):
@@ -132,7 +132,7 @@ class DDPGActor:
         # build function to apply gradients to actor model
         act_grads = K.placeholder(shape=(None, self.act_shape))
         clipped_grads = K.clip(act_grads, -0.5, 0.5)
-        mean_grad = K.sum(clipped_grads, axis=0)
+        mean_grad = K.mean(clipped_grads, axis=0)
         update_params = tf.gradients(self.model.output, self.model.trainable_weights, -clipped_grads)
         grads = zip(update_params, self.model.trainable_weights)
         

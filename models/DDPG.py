@@ -128,7 +128,6 @@ class DDPGAgent(base):
          L_Q = \frac{1}{N} \sum_j (y_j - Q(s_j, a_j | \theta^Q))^2 ==> squared bellman update
          \div_{\theta^{\mu}} J = \frac{1}{N} \sum_j \div_a Q(s_j, \mu(s_j | \theta^{\mu}) | \theta^Q)
         """
-        ret = []
         batch = Transition(*zip(*self.memory.sample(self.batch_size)))
         
         states = np.array(batch.state)
@@ -150,10 +149,12 @@ class DDPGAgent(base):
         tmp, self._parameter_dict = self.reward_function(batch, **self._parameter_dict)
         
         y += np.array(tmp).reshape((-1, 1))
-        ret.append(self.behavior_q.model.evaluate([states, actions], y, verbose=0)) # loss of critic model
-        self.behavior_q.model.fit([states, actions], y, verbose=0)
+        history = self.behavior_q.model.fit([states, actions], y, verbose=0)
 
-        
+        self.state['training/critic_accuracy'] = history.history['accuracy'][0]
+        self.state['training/critic_loss'] = history.history['loss'][0]
+        self.state['training/num_episodes'] = self._num_episodes
+
         #### ACTOR UPDATE ####
         acts = self.behavior_pi.predict(states)
         
@@ -162,10 +163,9 @@ class DDPGAgent(base):
         # apply gradients 
         mean_grads = self.behavior_pi_AdamOpt([batch.state, np.array(action_grads).reshape(-1, self.env.action_space.shape[0])])
         
-        self.state['training/mean_grad'] = mean_grads[0]  
+        self.state['training/actor_mean_grad'] = mean_grads[0]  
         
         
-        return ret
 
 
 
@@ -183,9 +183,8 @@ class DDPGAgent(base):
             st = self.act(st)
             
             if(self.memory.can_sample(self.batch_size) and tt > self.learning_starts):
-                loss = self.update_on_batch()   
+                self.update_on_batch()   
 
-                self.state['training/critic_loss'] = loss[0]
 
                 
                 if (tt+1)%self.update_timesteps == 0:
@@ -230,7 +229,10 @@ class DDPGAgent(base):
         """
         images = []
         obs = self.env.reset()
-        img = self.env.render(mode='rgb_array')
+        try:
+            img = self.env.render(mode='rgb_array')
+        except NotImplementedError:
+            img = self.env.env.render(mode='rgb_array')
 
         eps_rew = 0
         episode = 1
@@ -239,7 +241,10 @@ class DDPGAgent(base):
             action = self.predict(obs)[0]
             obs, rew, done, _ = self.env.step(action)
             eps_rew += rew
-            img = self.env.render(mode='rgb_array')
+            try:
+                img = self.env.render(mode='rgb_array')
+            except NotImplementedError:
+                img = self.env.env.render(mode='rgb_array')
             if(done):
                 print(f"Episode {episode} with reward {eps_rew}")
                 episode += 1
