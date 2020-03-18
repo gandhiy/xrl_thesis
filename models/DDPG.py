@@ -272,7 +272,7 @@ class DDPGAgent(base):
         self.behavior_pi.model.save(join(path, 'behavior_pi.h5'))
         self.behavior_q.model.save(join(path, 'behavior_q.h5'))
         self.target_pi.model.save(join(path, 'target_pi.h5'))
-        self.target_q.model.save(join(path, 'target_p.h5'))
+        self.target_q.model.save(join(path, 'target_q.h5'))
 
 
     def load(self, path):
