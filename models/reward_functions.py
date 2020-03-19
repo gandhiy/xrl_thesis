@@ -41,6 +41,24 @@ class SHAP(reward):
 
         return kwargs['explainer'].shap_values(x_test, nsamples=10, l1_reg='aic', silent=True)
 
+    def plot_shap_vals(self, vals):
+        out_state = {}
+        for i, a_list in enumerate(vals):
+            per_obs_mean = np.mean(np.abs(a_list), axis=0)
+            for j, obs in enumerate(per_obs_mean):
+                out_state[f'shap_vals/obs_{j}_act_{i}'] = obs
+        return out_state
+
+
+class identity_SHAP(SHAP):
+    def __init__(self, predictor):
+        super(identity_SHAP).__init__(predictor)
+    
+    def reward_function(self, batch, **kwargs):
+        shap_vals = self.get_shap_vals(batch, **kwargs)
+        kwargs['state'].update(self.plot_shap_vals(shap_vals))
+        return batch.reward, kwargs 
+
 
 class additive_SHAP(SHAP):
     def __init__(self, predictor):
@@ -56,10 +74,3 @@ class additive_SHAP(SHAP):
     
         return total_val, kwargs
     
-    def plot_shap_vals(self, vals):
-        out_state = {}
-        for i, a_list in enumerate(vals):
-            per_obs_mean = np.mean(np.abs(a_list), axis=0)
-            for j, obs in enumerate(per_obs_mean):
-                out_state[f'shap_vals/obs_{j}_act_{i}'] = obs
-        return out_state

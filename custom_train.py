@@ -9,7 +9,7 @@ from argparse import ArgumentParser
 from models.DQN import DQNAgent
 from models.DDPG import DDPGAgent
 from models.networks import MlpPolicy, CNNPolicy
-from models.reward_functions import Identity, additive_SHAP
+from models.reward_functions import identity_SHAP, additive_SHAP
 
 from pdb import set_trace as debug
 
@@ -24,10 +24,12 @@ def main(configs):
     else:
         raise AttributeError("need to specify policy either ['Mlp', 'CNN'] ")
 
-    if(configs['reward'].casefold() == 'Identity'.casefold()):
-        reward = Identity
+    if(configs['reward'].casefold() == 'identity_SHAP'.casefold()):
+        reward = identity_SHAP
     elif(configs['reward'].casefold() == 'additive_SHAP'.casefold()):
         reward = additive_SHAP
+    else:
+        raise AttributeError("need to specify a reward function")
     
     model_building_configs = configs['model_building_parameters']
     
