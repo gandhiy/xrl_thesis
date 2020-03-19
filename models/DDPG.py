@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 from copy import deepcopy
+from time import time
 from .base import base
 from os.path import join
 from .networks import DDPGActor as Actor
@@ -176,6 +177,7 @@ class DDPGAgent(base):
         best_val_score = -np.inf
 
         for tt in range(total_timesteps):  
+            start = time()
             self.update_dictionary()
             self.state['timestep'] = tt
             st = self.act(st) 
@@ -214,7 +216,7 @@ class DDPGAgent(base):
                     self.epsilon *= self.epsilon_decay
             
             self.state['training/epsilon'] = self.epsilon
-            
+            self.state['training/time_per_iteration'] = time() - start
             self.writer.update(self.state)
         
         self.env.close()

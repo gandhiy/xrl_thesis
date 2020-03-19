@@ -6,6 +6,7 @@ import tensorflow as tf
 import tensorflow.keras as keras
 
 from copy import deepcopy
+from time import time
 from .base import base
 from os.path import join 
 from core.tools import summary
@@ -157,6 +158,7 @@ class DQNAgent(base):
         best_val_score = -np.inf
         
         for tt in range(total_timesteps):
+            start = time()
             self.state['timestep'] = tt
             self.update_dictionary()
             st = self.act(st)
@@ -188,10 +190,10 @@ class DQNAgent(base):
             if(tt < self.exploration_fraction * total_timesteps):
                 if self.epsilon > self.epsilon_min and tt%self.decay_timestep == 0:
                     self.epsilon *= self.epsilon_decay
+            
+            
             self.state['training/epsilon'] = self.epsilon
-
-
-
+            self.state['training/time_per_iteration'] = time() - start
             self.writer.update(self.state)
         self.env.close()
 
