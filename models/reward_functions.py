@@ -51,8 +51,9 @@ class SHAP(reward):
 
 
 class identity_SHAP(SHAP):
+
     def __init__(self, predictor):
-        super(identity_SHAP).__init__(predictor)
+        super(identity_SHAP, self).__init__(predictor)
     
     def reward_function(self, batch, **kwargs):
         shap_vals = self.get_shap_vals(batch, **kwargs)

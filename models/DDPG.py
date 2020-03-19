@@ -100,7 +100,7 @@ class DDPGAgent(base):
     
         
     def shap_predictor(self):
-        return self.behavior_pi
+        return self.behavior_pi.model
 
 
     def transfer_weights(self):
