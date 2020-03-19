@@ -3,14 +3,14 @@ import pickle
 import imageio
 import numpy as np 
 import tensorflow as tf
+import tensorflow.keras as keras
 
 from copy import deepcopy
 from .base import base
 from os.path import join 
 from core.tools import summary
-from tensorflow import keras
-from keras.models import load_model
-from keras.optimizers import Adam
+from tensorflow.keras.models import load_model
+from tensorflow.keras.optimizers import Adam
 from core.replay_experience import Transition
 
 from pdb import set_trace as debug
@@ -143,7 +143,7 @@ class DQNAgent(base):
         target[np.arange(self.batch_size), batch.action] = y
         history = self.behavior.fit(np.array(batch.state), target, verbose=0)
         
-        self.state['training/accuracy'] = history.history['accuracy'][0]
+        self.state['training/accuracy'] = history.history['acc'][0]
         self.state['training/loss'] = history.history['loss'][0]
         self.state['training/num_episodes'] = self._num_episodes
         

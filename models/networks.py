@@ -1,15 +1,15 @@
-import keras
+import tensorflow.keras as keras
 import numpy as np
 import tensorflow as tf
-import keras.backend as K
+import tensorflow.keras.backend as K
 
 
-from keras.models import Sequential, Model, load_model
-from keras.layers import Dense, GaussianNoise, Input, concatenate
-from keras.layers import BatchNormalization, Flatten, Lambda, Conv2D
-from keras.layers import Softmax, MaxPool2D
-from keras.optimizers import Adam
-from keras.initializers import RandomUniform
+from tensorflow.keras.models import Sequential, Model, load_model
+from tensorflow.keras.layers import Dense, GaussianNoise, Input, concatenate
+from tensorflow.keras.layers import BatchNormalization, Flatten, Lambda, Conv2D
+from tensorflow.keras.layers import Softmax, MaxPool2D
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.initializers import RandomUniform
 
 from pdb import set_trace as debug
 

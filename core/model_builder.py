@@ -94,7 +94,7 @@ class model_builder:
 
         if(type(self.env.action_space) in self.allowed_action_spaces):
             n_actions = self.env.action_space.shape[-1]
-            action_noise = NormalActionNoise(mean = np.zeros(n_actions), sigma=0.1*np.ones(n_actions))
+            action_noise = NormalActionNoise(mean = np.zeros(n_actions), sigma=1.0*np.ones(n_actions))
             self.model = DDPG(MlpPolicy, self.env, action_noise=action_noise, tensorboard_log=self.tf_board, **self.model_parameters)
 
         else:

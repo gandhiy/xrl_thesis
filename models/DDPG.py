@@ -10,7 +10,7 @@ from os.path import join
 from .networks import DDPGActor as Actor
 from .networks import DDPGCritic as Critic
 from core.tools import summary
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 from core.replay_experience import Transition
 
 from pdb import set_trace as debug
@@ -19,20 +19,21 @@ class DDPGAgent(base):
     def __init__(
         self, env, reward_class, model_name='temp', batch_size=256, memory_size=1028, gamma=0.95, epsilon = 1.0, 
         epsilon_min=0.01, epsilon_decay=0.995, exploration_fraction=0.1, decay_timesteps=100, update_timesteps=50, 
-        tau=0.01, learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, clipping=0.5, logger_steps = 500,
+        tau=0.01, actor_lr = 0.001, critic_lr = 0.001, beta_1 = 0.9, beta_2 = 0.99, clipping=0.5, logger_steps = 500,
         learning_starts = 500, action_replay=False, render=False, explainer_updates=256, explainer_summarizing=25,
         summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000, making_a_gif=250, gif_length = 500,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000):
 
         super(DDPGAgent, self).__init__(
-            env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size, 
+            env, 1.0, beta_1, beta_2, tau, batch_size, gamma, memory_size, 
             epsilon, epsilon_min, epsilon_decay, exploration_fraction, decay_timesteps, update_timesteps,
             logger_steps, learning_starts, action_replay, render, model_name, save_paths, val_eps, 
             val_numtimesteps, gifs, making_a_gif, gif_length, save_step
 
         )
 
-        
+        self.actor_lr = actor_lr
+        self.critic_lr = critic_lr
 
         if(len(self.env.action_space.shape) > 0):
             envShape = self.env.action_space.shape 
@@ -42,7 +43,7 @@ class DDPGAgent(base):
         ### Set up behavior Q ###
         self.behavior_q = Critic(self.env.observation_space.shape, envShape)
         self.behavior_q.init_model()
-        self.behavior_q.build_opt(self.learning_rate, self.beta_1, self.beta_2)
+        self.behavior_q.build_opt(self.critic_lr, self.beta_1, self.beta_2)
         
         ### Set up target Q ###
         self.target_q = Critic(self.env.observation_space.shape, envShape)
@@ -51,7 +52,7 @@ class DDPGAgent(base):
         ### Set up behavior pi ###
         self.behavior_pi = Actor(self.env.observation_space.shape, envShape, self.env.action_space.high)
         self.behavior_pi.init_model()
-        self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.learning_rate, self.beta_1, self.beta_2, clipping)
+        self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.actor_lr, self.beta_1, self.beta_2, clipping)
         self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
 
         ### Set up target pi ###
@@ -147,7 +148,8 @@ class DDPGAgent(base):
         y += np.array(r).reshape((-1, 1))
         history = self.behavior_q.model.fit([states, actions], y, verbose=0)
 
-        self.state['training/critic_accuracy'] = history.history['accuracy'][0]
+
+        self.state['training/critic_accuracy'] = history.history['acc'][0]
         self.state['training/critic_loss'] = history.history['loss'][0]
         self.state['training/num_episodes'] = self._num_episodes
 
