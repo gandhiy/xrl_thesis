@@ -51,7 +51,7 @@ class DDPGCritic:
         self.obs_shape = obs_shape
         self.act_shape = act_shape
         
-    def __init_model__(self, model_params = [128, 64]):
+    def __init_model__(self, model_params = [64, 64]):
         
         inp_1 = Input((self.obs_shape))
         inp_2 = Input((self.act_shape))
@@ -61,7 +61,7 @@ class DDPGCritic:
         for m in model_params[1:]:
             x = Dense(m, activation='relu')(x)
             x = BatchNormalization()(x)
-        out = Dense(1, activation='linear')(x)
+        out = Dense(1, activation='linear', kernel_initializer = RandomUniform(minval = -3e-3, maxval = 3e-3))(x)
         self.model = Model([inp_1, inp_2], out)
         
     def __build_opt__(self, lr, b1, b2):
@@ -111,17 +111,18 @@ class DDPGActor:
         self.act_shape = act_shape[0] 
         self.act_range = act_range
         
-    def __init_model__(self, model_params=[128, 64]):
+    def __init_model__(self, model_params=[400, 300]):
         inp = Input((self.obs_shape))
         x = Dense(model_params[0], activation='relu')(inp)
+        x = GaussianNoise(1.0)(x)
+        
         for m in model_params[1:]:
             x = Dense(m, activation='relu')(x)
-            x = BatchNormalization()(x)
         
         x = GaussianNoise(0.5)(x)
         
         # puts action out vals between -1 and 1
-        out = Dense(self.act_shape, activation='tanh')(x)
+        out = Dense(self.act_shape, activation='tanh', kernel_initializer= RandomUniform(minval = -3e-3, maxval = 3e-3))(x)
         
         # set to the correct range
         act_range = self.act_range
@@ -129,15 +130,20 @@ class DDPGActor:
         self.model= Model(inp, out)
         
     def __build_opt__(self, lr, b1, b2, cf):
-        # build function to apply gradients to actor model
+        # gradients
+        # this never gets used, but puts the actor model into feed-forward mode
+        self.model.compile('sgd', 'mse')
+
         act_grads = K.placeholder(shape=(None, self.act_shape))
-        clipped_grads = K.clip(act_grads, -cf, cf)
-        mean_grad = K.mean(clipped_grads, axis=0)
-        update_params = tf.gradients(self.model.output, self.model.trainable_weights, -clipped_grads)
+        
+        mean_grad = K.mean(act_grads, axis=0)
+        
+        # update function
+        update_params = tf.gradients(self.model.output, self.model.trainable_weights, -act_grads)
         grads = zip(update_params, self.model.trainable_weights)
         
         
-        
+        # optimizer function
         return K.function(
             inputs=[self.model.input, act_grads], outputs=[mean_grad],
             updates=[tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).apply_gradients(grads)][1:]

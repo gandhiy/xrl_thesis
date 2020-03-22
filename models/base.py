@@ -41,6 +41,9 @@ class base:
         self.gif_frames = gl
         self.save_log = ss
 
+        self.state = {}
+
+
 
         # validation parameters
         self.num_validation_episode = ve
@@ -56,6 +59,8 @@ class base:
         self.save_path = join(self.save_path, self.model_name)
         os.makedirs(self.save_path, exist_ok=True)
 
+        self.exploration_noise = None
+
     def update_dictionary(self):
         if(len(self._parameter_dict)  == 0):
             self._parameter_dict = {
@@ -69,14 +74,15 @@ class base:
 
     def act_once(self, at, st):
         snext, rt, done, _ = self.env.step(at)
-
+        self._eps_rew_list.append(rt)
         if done:
             self._num_episodes += 1
-            self._eps_rew_list.append(self._eps_rew)
-            self._mean_eps_rew = sum(self._eps_rew_list)/len(self._eps_rew_list)
-            self._eps_rew = 0
+            self.state['training/reward'] = sum(self._eps_rew_list)/len(self._eps_rew_list)
+            self._eps_rew_list = []
             snext = self.env.reset()
-        self._eps_rew += rt
+            if(self.exploration_noise is not None):
+                self.exploration_noise.reset()
+        
         self.memory.push(st, at, snext, done, rt)
         return snext
 

@@ -7,6 +7,8 @@ import numpy as np
 import pickle
 import tensorflow as tf
 
+from pdb import set_trace as debug
+
 def test_model(env, model, parameters):
     """
      Test a given environment with a trained (not necessarily) model under specific parameters
@@ -64,16 +66,33 @@ def test_model(env, model, parameters):
     
     return results
 
+class Ornstein_Uhlenbeck_Noise:
+    def __init__(self, act_dim, mu = 0, theta = 0.1, sigma = 0.2):
+        self.dim = act_dim
+        self.mu = mu 
+        self.theta = theta
+        self.sigma = sigma
+        self.reset()
+
+    def reset(self):
+        self.state = np.ones(self.dim) * self.mu
+
+    def noise(self):
+        x = self.state
+        dx = self.theta * (self.mu - x) + self.sigma + np.random.randn(len(x))
+        self.state = x + dx
+        return self.state
+
 
 def load_model(path):
     with open(path, 'rb') as f:
         return pickle.load(f)
 
-
 class summary:
     def __init__(self, writer):
         self.writer = writer
-        
+
+
     def update(self, state):
         timestep = state['timestep']
         for k,v in state.items():

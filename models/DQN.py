@@ -59,7 +59,7 @@ class DQNAgent(base):
         self.save_path = join(self.save_path, 'DQN{}'.format(len(files) + 1))
         logdir = join(self.save_path, 'tensorboard_logs')
         self.writer = summary(tf.summary.FileWriter(logdir))
-        self.state = {}
+
         if(self.gif):
             gifdir = join(self.save_path, 'gifs')
             os.makedirs(gifdir, exist_ok=True)
@@ -76,6 +76,8 @@ class DQNAgent(base):
         self.reward_class = reward_class
         self.reward_function = None
 
+
+        
 
 
     def _build_opt(self):
