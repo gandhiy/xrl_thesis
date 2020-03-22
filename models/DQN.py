@@ -91,7 +91,7 @@ class DQNAgent(base):
     def transfer_weights(self):
         # soft update
         self.target.set_weights(
-            [self.tau*l1 + (1 - self.tau)*l2 for l1, l2 in zip(self.target.get_weights(), self.behavior.get_weights())]
+            [(1-self.tau)*l1 + self.tau*l2 for l1, l2 in zip(self.target.get_weights(), self.behavior.get_weights())]
         )
 
     def shap_predictor(self):

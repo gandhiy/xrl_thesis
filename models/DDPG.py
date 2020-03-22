@@ -88,6 +88,7 @@ class DDPGAgent(base):
         self.theta = theta
         self.exploration_noise = Ornstein_Uhlenbeck_Noise(envShape, self.mu, self.theta, self.sigma)
 
+        
 
     def _action_replay(self, at, st):
         for _ in range(3):
@@ -111,11 +112,14 @@ class DDPGAgent(base):
     def shap_predictor(self):
         return self.behavior_pi.model
 
+    def _asdf_test(self):
+        x = np.random.rand(100, self.env.observation_space.shape[0])
+        print(np.linalg.norm(self.target_pi.predict(x) - self.behavior_pi.predict(x)))
 
     def transfer_weights(self):
         self.target_q.transfer_weights(self.behavior_q.model, self.tau)
         self.target_pi.transfer_weights(self.behavior_pi.model, self.tau)    
-
+        debug()
 
     def behavior_predict(self, state, single_obs=False):
         return self.behavior_pi.predict(state)

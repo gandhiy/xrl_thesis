@@ -91,7 +91,7 @@ class DDPGCritic:
     
     def transfer_weights(self, model, tau):
         self.model.set_weights(
-            [tau*l1 + (1-tau)*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
+            [(1-tau)*l1 + tau*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
         )
 
 
@@ -169,7 +169,7 @@ class DDPGActor:
         
     def transfer_weights(self, model, tau):
         self.model.set_weights(
-            [tau*l1 + (1-tau)*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
+            [(1-tau)*l1 + tau*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
         )
 
     def save(self, path):
