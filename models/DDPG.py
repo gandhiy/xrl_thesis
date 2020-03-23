@@ -21,9 +21,11 @@ class DDPGAgent(base):
         self, env, reward_class, model_name='temp', batch_size=256, memory_size=1028, gamma=0.95, epsilon = 1.0, 
         epsilon_min=0.01, epsilon_decay=0.995, exploration_fraction=0.1, decay_timesteps=100, update_timesteps=50, 
         tau=0.01, actor_lr = 0.001, critic_lr = 0.001, beta_1 = 0.9, beta_2 = 0.99, clipping=0.5, logger_steps = 500, 
-        learning_starts = 500, action_replay=False, render=False,explainer_updates=256, explainer_summarizing=25, sigma = 0.2, 
+        learning_starts = 500, action_replay=False, render=False, explainer_updates=256, explainer_summarizing=25, sigma = 0.2, 
         mu = 0, theta=0.15, summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000, making_a_gif=250, 
-        gif_length = 500, save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000):
+        gif_length = 500, save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000,
+        actor_layers = [64,64], critic_layers=[64,64]
+        ):
 
         super(DDPGAgent, self).__init__(
             env, 1.0, beta_1, beta_2, tau, batch_size, gamma, memory_size, 
@@ -42,29 +44,37 @@ class DDPGAgent(base):
         else:
             envShape = self.env.action_space.n
 
+
+
+
+
         ### Set up behavior Q ###
         self.behavior_q = Critic(self.env.observation_space.shape, envShape)
-        self.behavior_q.init_model()
+        self.behavior_q.init_model(critic_layers)
         self.behavior_q.build_opt(self.critic_lr, self.beta_1, self.beta_2)
         
         ### Set up target Q ###
         self.target_q = Critic(self.env.observation_space.shape, envShape)
-        self.target_q.init_model()
+        self.target_q.init_model(critic_layers)
         self.target_q.build_opt(self.critic_lr, self.beta_1, self.beta_2)
+
 
         ### Set up behavior pi ###
         self.behavior_pi = Actor(self.env.observation_space.shape, envShape, self.env.action_space.high)
-        self.behavior_pi.init_model()
+        self.behavior_pi.init_model(actor_layers)
         self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.actor_lr, self.beta_1, self.beta_2, clipping)
         self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
 
         ### Set up target pi ###
         self.target_pi = Actor(self.env.observation_space.shape, envShape, self.env.action_space.high)
-        self.target_pi.init_model()
+        self.target_pi.init_model(actor_layers)
         _ = self.target_pi.build_opt(self.actor_lr, self.beta_1, self.beta_2, clipping)
 
         self.transfer_weights()
         
+
+
+
         # Set up tb logging
         files = [f for f in os.listdir(self.save_path) if 'DDPG' in f]
         self.save_path = join(self.save_path, 'DDPG{}'.format(len(files) + 1))
@@ -119,7 +129,6 @@ class DDPGAgent(base):
     def transfer_weights(self):
         self.target_q.transfer_weights(self.behavior_q.model, self.tau)
         self.target_pi.transfer_weights(self.behavior_pi.model, self.tau)    
-        debug()
 
     def behavior_predict(self, state, single_obs=False):
         return self.behavior_pi.predict(state)

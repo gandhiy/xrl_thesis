@@ -51,7 +51,7 @@ class DDPGCritic:
         self.obs_shape = obs_shape
         self.act_shape = act_shape
         
-    def __init_model__(self, model_params = [64, 64]):
+    def __init_model__(self, model_params):
         
         inp_1 = Input((self.obs_shape))
         inp_2 = Input((self.act_shape))
@@ -72,8 +72,8 @@ class DDPGCritic:
             clipvalue=0.5
         )
     
-    def init_model(self):
-        self.__init_model__()
+    def init_model(self, model_params=[64,64]):
+        self.__init_model__(model_params)
     
     
     def build_opt(self, learning_rate, beta_1, beta_2):
@@ -111,7 +111,7 @@ class DDPGActor:
         self.act_shape = act_shape[0] 
         self.act_range = act_range
         
-    def __init_model__(self, model_params=[400, 300]):
+    def __init_model__(self, model_params):
         inp = Input((self.obs_shape))
         x = Dense(model_params[0], activation='relu')(inp)
         x = GaussianNoise(1.0)(x)
@@ -155,8 +155,8 @@ class DDPGActor:
             outputs=K.gradients(qmodel.output, qmodel.input[1])
         )
     
-    def init_model(self):
-        self.__init_model__()
+    def init_model(self, model_params=[64, 64]):
+        self.__init_model__(model_params)
         
     def build_opt(self, learning_rate, beta_1, beta_2, clipping_factor):
         return self.__build_opt__(learning_rate, beta_1, beta_2, clipping_factor)
