@@ -75,3 +75,32 @@ class additive_SHAP(SHAP):
     
         return total_val, kwargs
     
+
+
+class curriculum(SHAP):
+    def __init__(self, predictor):
+        super(curriculum, self).__init__(predictor)
+        self.shap_reward = additive_SHAP(predictor)
+        self.greedy_reward = Identity()
+        self.split_val = 1
+
+
+    def reward_function(self, batch, **kwargs):
+        if kwargs['state']['timestep'] < self.split_val * kwargs['_total_timesteps']:
+            return self.shap_reward.reward_function(batch, **kwargs)
+        else:
+            return self.greedy_reward.reward_function(batch, **kwargs)
+            
+        
+
+
+class curriculum_3(curriculum):
+    def __init__(self, predictor):
+        super(curriculum_3, self).__init__(predictor)
+        self.split_val = .3
+
+
+class curriculum_6(curriculum):
+    def __init__(self, predictor):
+        super(curriculum_6, self).__init__(predictor)
+        self.split_val = .6

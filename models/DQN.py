@@ -21,11 +21,13 @@ from pdb import set_trace as debug
 class DQNAgent(base):
     def __init__(
         self, env, policy, reward_class, model_name='temp', batch_size = 256, memory_size=1028, gamma = 0.95, epsilon = 1.0,
-        epsilon_min = 0.01, epsilon_decay = 0.995, decay_timesteps=500, exploration_fraction=0.1, update_timesteps= 50, tau=0.01, 
-        learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps=500, learning_starts = 1000, double=True,
+        epsilon_min = 0.01, epsilon_decay = 0.995, decay_timesteps=5, exploration_fraction=0.1, update_timesteps= 50, tau=0.01, 
+        learning_rate = 0.001, beta_1 = 0.9, beta_2 = 0.99, logger_steps=500, learning_starts = 0, double=True,
         action_replay=False, render=False, explainer_updates = 256, explainer_summarizing=25, val_eps = 10,
         val_numtimesteps = 1000, summarize_shap = True, num_to_explain = 5, making_a_gif=250, gif_length = 500,
-        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000):
+        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000, clipping=0.5,
+        layers = [64, 64]
+        ):
         
         super(DQNAgent, self).__init__(
             env, learning_rate, beta_1, beta_2, tau, batch_size, gamma, memory_size,
@@ -36,26 +38,30 @@ class DQNAgent(base):
         
 
         self.double=double
+
+
+        if(clipping):
+            self.clip_val = clipping
+        else:
+            self.clip_val = None
         
         if(len(self.env.action_space.shape)>0):
-            ## Behavior Model
-            self.behavior = policy(self.env.observation_space.shape, self.env.action_space.shape).model
-            self.behavior.compile(optimizer = self._build_opt(), loss = 'mse', metrics=['accuracy'])
-            ## Target model
-            self.target = policy(self.env.observation_space.shape, self.env.action_space.shape).model
-            self.target.compile(optimizer=self._build_opt(), loss='mse', metrics=['accuracy'])
+            envShape = self.env.action_space.shape[0]
         else:
-            ## Behavior Model
-            self.behavior = policy(self.env.observation_space.shape, self.env.action_space.n).model
-            self.behavior.compile(optimizer = self._build_opt(), loss = 'mse', metrics=['accuracy'])
-            ## Target Model
-            self.target = policy(self.env.observation_space.shape, self.env.action_space.n).model
-            self.target.compile(optimizer = self._build_opt(), loss= 'mse', metrics=['accuracy'])
+            envShape = self.env.action_space.n
+
+        self.behavior = policy(self.env.observation_space.shape, envShape, model_params = layers).model
+        self.behavior.compile(optimizer=self._build_opt(), loss='mse', metrics=['accuracy'])
+
+        self.target = policy(self.env.observation_space.shape, envShape, model_params = layers).model
+        self.target.compile(optimizer=self._build_opt(), loss='mse', metrics=['accuracy'])
+    
+        
         self.transfer_weights()
         
 
-        files = [f for f in os.listdir(self.save_path) if 'DQN' in f]
 
+        files = [f for f in os.listdir(self.save_path) if 'DQN' in f]
         self.save_path = join(self.save_path, 'DQN{}'.format(len(files) + 1))
         logdir = join(self.save_path, 'tensorboard_logs')
         self.writer = summary(tf.summary.FileWriter(logdir))
@@ -77,16 +83,21 @@ class DQNAgent(base):
         self.reward_function = None
 
 
-        
-
 
     def _build_opt(self):
-        return Adam(
-            learning_rate = self.learning_rate,
-            beta_1 = self.beta_1,
-            beta_2 = self.beta_2,
-            clipvalue=0.5,
-        )
+        if(self.clip_val):
+            return Adam(
+                learning_rate = self.learning_rate,
+                beta_1 = self.beta_1,
+                beta_2 = self.beta_2,
+                clipvalue=self.clip_val,
+            )
+        else:
+            return Adam(
+                learning_rate=self.learning_rate, 
+                beta_1 = self.beta_1,
+                beta_2 = self.beta_2
+            )
     
     def transfer_weights(self):
         # soft update
@@ -157,7 +168,8 @@ class DQNAgent(base):
         self.reward_function = self.reward_class(self.shap_predictor()).reward_function
         st = self.env.reset()
         assert self.learning_starts < total_timesteps        
-        best_val_score = -np.inf
+        self.__best_val_score = -10000000
+        self._total_timesteps = total_timesteps
         
         for tt in range(total_timesteps):
             start = time()
@@ -172,15 +184,7 @@ class DQNAgent(base):
                     self.transfer_weights()
                     
                 if((tt+1)%self.logging_step == 0):    
-                    val_avg_rew, val_avg_eps = self.validate()
-                    if(val_avg_rew > best_val_score):
-                        best_val_score = val_avg_rew
-                        p = join(self.save_path, 'best_model')
-                        os.makedirs(p, exist_ok = True)
-                        self.save(p)
-                    
-                    self.state[f'validation/average_{self.num_validation_episode}_episode_reward'] = val_avg_rew
-                    self.state['validation/average_episode_length'] = val_avg_eps
+                    self.validate()
                     
                 if (tt+1)%self.gif_logger_step == 0 and self.gif:
                     self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
@@ -197,6 +201,8 @@ class DQNAgent(base):
             self.state['training/epsilon'] = self.epsilon
             self.state['training/time_per_iteration'] = time() - start
             self.writer.update(self.state)
+            self.state = {}
+
         self.env.close()
 
     
@@ -227,25 +233,54 @@ class DQNAgent(base):
         imageio.mimsave(save, [np.array(img) for i, img in enumerate(images) if i%2 == 0], fps=29)
         self.env.close()
 
-                    
 
     def validate(self):
-        env = deepcopy(self.env)
-        reward = 0
-        episode_length = 0
-        obs = env.reset()
-        for _ in range(self.num_validation_episode):
-            for j in range(self.num_validation_timesteps):
-                a = np.argmax(self.target_predict(obs, single_obs=True))
-                obs, r, done, _ = env.step(a)
-                reward += r
-                if(done):
-                    obs = env.reset()
-                    episode_length += (j + 1)
-                    break
-        
-        return reward/self.num_validation_episode, episode_length/self.num_validation_episode
-        
+        for k in ['target', 'behavior']:             
+            env = deepcopy(self.env)
+            obs = env.reset()
+            episode_rewards = []
+            episode_lengths = []
+            
+            if(self.render and k == 'target'):
+                env.render(mode='rgb_array')
+            
+
+            for _ in range(self.num_validation_episode):
+                eps_count = 0
+                reward = 0
+                done = False
+                while not done:
+                    eps_count += 1
+                    if(k == 'target'):
+                        a = np.argmax(self.target_predict(obs, single_obs=True))
+                    else:
+                        a = np.argmax(self.behavior_predict(obs, single_obs=True))
+                    
+                    
+                    obs, r, done, _ = env.step(a)
+                    if(self.render and k == 'target'):
+                        env.render(mode='rgb_array')
+                    reward += r
+                obs = env.reset()
+                episode_lengths.append(eps_count)
+                episode_rewards.append(reward)
+            env.close()
+            del(env)
+            avg_reward = np.mean(episode_rewards)
+            avg_length = np.mean(episode_lengths)
+            
+            if(avg_reward > self.__best_val_score and k == 'target'):
+                self.__best_val_score = avg_reward
+                p = join(self.save_path, 'best_model')
+                os.makedirs(p, exist_ok=True)
+                self.save(p)
+
+            self.state[f'validation/average_{k}_reward'] = avg_reward
+            self.state[f'validation/average_{k}_episode_length'] = avg_length
+
+        self.state['validation/best_average_reward'] = self.__best_val_score
+                        
+                            
 
     def save(self, path):
         self.behavior.save(join(path, 'behavior.h5'))
