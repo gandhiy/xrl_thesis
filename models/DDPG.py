@@ -10,7 +10,7 @@ from .base import base
 from os.path import join
 from .networks import DDPGActor as Actor
 from .networks import DDPGCritic as Critic
-from core.tools import summary, Ornstein_Uhlenbeck_Noise, DDPGSequence
+from core.tools import summary, Ornstein_Uhlenbeck_Noise
 from tensorflow.keras.models import load_model
 from core.replay_experience import Transition
 
