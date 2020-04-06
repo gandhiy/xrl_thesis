@@ -19,7 +19,7 @@ class DQNAgent(base):
         self, env, reward_class, model_name='temp', 
         batch_size=256, memory_size=50000, gamma=0.995, tau = 0.001,
         start_epsilon=1.0, epsilon_min = 0.001, epsilon_decay = 0.995, 
-        warmup_episodes=25, learning_rate=0.001, beta_1 = 0.9, beta_2 = 0.99, epochs=1,
+        warmup=25, learning_rate=0.001, beta_1 = 0.9, beta_2 = 0.99, epochs=1,
         render = False, validation_logging = 25, validation_episodes = 5, 
         save_gifs = False, save_gifs_every_n_episodes = 100, gif_frames=1000,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', save_episodes = 
@@ -27,7 +27,7 @@ class DQNAgent(base):
 
         super(DQNAgent, self).__init__(
         env, model_name, save_paths, learning_rate, beta_1, beta_2, epochs, tau, batch_size,
-        gamma, memory_size, validation_logging, warmup_episodes, render, validation_episodes, 
+        gamma, memory_size, validation_logging, warmup, render, validation_episodes, 
         save_gifs, save_gifs_every_n_episodes, gif_frames, save_episodes, verbose)
         
 
