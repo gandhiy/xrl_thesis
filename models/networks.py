@@ -1,179 +1,270 @@
-import tensorflow.keras as keras
+import sys
 import numpy as np
 import tensorflow as tf
+import tensorflow.keras as keras
 import tensorflow.keras.backend as K
 
+sys.path.append("..")
 
+from core.tools import ppo_loss, ppo_loss_continuous
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Dense, GaussianNoise, Input, concatenate
 from tensorflow.keras.layers import BatchNormalization, Flatten, Lambda, Conv2D
-from tensorflow.keras.layers import Softmax, MaxPool2D
+from tensorflow.keras.layers import Softmax, MaxPool2D, ELU
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.initializers import RandomUniform
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.initializers import RandomUniform, VarianceScaling
 
 from pdb import set_trace as debug
 
 # for DQN
-class MlpPolicy:
-    def __init__(self, 
-        in_size, 
-        act_size, 
-        model_params = [128, 64]
-    ):
-        self.model = Sequential()
-        self.model.add(Dense(model_params[0], input_shape = in_size, activation='relu'))
-        
-        for m in model_params[1:]:
-            self.model.add(Dense(m, activation='relu'))
-        
-        self.model.add(Dense(act_size, activation='softmax'))
+class DQNPolicy:
+    def __init__(self, in_state, in_actions, layers):
+        self.obs = in_state
+        self.act = in_actions
+        self.state_input = Input(shape = self.obs)
 
-class CNNPolicy:
-    def __init__(self, 
-        in_size, 
-        act_size, 
-        model_params = [128, 64]
-    ):
-        self.model = Sequential()
-        self.model.add(Conv2D(model_params[0], 3, input_shape=in_size, data_format='channels_last', activation='relu'))
-        self.model.add(MaxPool2D())
-        for m in model_params[1:]:
-            self.model.add(Conv2D(m, 3, activation='relu'))
-            self.model.add(MaxPool2D())
+        x = Dense(layers[0], activation='relu')(self.state_input)
+        for l in layers[1:]:
+            x = Dense(l, activation='relu')(x)
+        
+        out = Dense(self.act, activation='softmax')(x)
+        self.model = Model(inputs = [self.state_input], outputs=[out])
 
-        self.model.add(Flatten())
-        self.model.add(Dense(act_size))
-        
-
-# DDPG Actor & Critic networks
-class DDPGCritic:
-    def __init__(self, obs_shape, act_shape, *args):
-        self.obs_shape = obs_shape
-        self.act_shape = act_shape
-        
-    def __init_model__(self, model_params):
-        
-        inp_1 = Input((self.obs_shape))
-        inp_2 = Input((self.act_shape))
-        
-        x = Dense(model_params[0], activation='relu')(inp_1)
-        x = concatenate([x, inp_2])
-        for m in model_params[1:]:
-            x = Dense(m, activation='relu')(x)
-            x = BatchNormalization()(x)
-        out = Dense(1, activation='linear', kernel_initializer = RandomUniform(minval = -3e-3, maxval = 3e-3))(x)
-        self.model = Model([inp_1, inp_2], out)
-        
-    def __build_opt__(self, lr, b1, b2):
-        return Adam(
-            learning_rate=lr,
-            beta_1 = b1,
-            beta_2 = b2,
-            clipvalue=0.5
+    def initialize(self, lr, b1, b2):
+        self.model.compile(
+            optimizer=Adam(learning_rate=lr, beta_1 = b1, beta_2 = b2, clipvalue = 0.5),
+            loss = 'mse',
+            metrics = ['accuracy'],
         )
     
-    def init_model(self, model_params=[64,64]):
-        self.__init_model__(model_params)
+    def transfer_weights(self, behavior_model, tau):
+        self.model.set_weights(
+            [((1 - tau)*l1) + (tau*l2) for l1, l2 in zip(self.model.get_weights(), behavior_model.model.get_weights())]
+        )
+
+    def predict(self, st):
+        return np.argmax(self.model.predict(np.expand_dims(st, axis=0)))
+
+    def batch_predict(self, st):
+        return np.argmax(self.model.predict(st), axis=1)
+
+    def fit(self, states, y):
+        return self.model.fit([states], y, verbose=0)
+
+# PPO Actor & Critic networks
+class PPOActor:
+    def __init__(self, in_state, in_actions, layers = [128, 128], continuous=False):
+        self.continuous = continuous
+        self.obs = in_state
+        self.act = in_actions
+        
+        self.state_input = Input(shape=self.obs)
+        self.advantage = Input(shape=(1, ))
+        self.old_prediction = Input(shape=(self.act, ))
+
+        x = Dense(layers[0], activation='tanh')(self.state_input)
+        for l in layers[1:]:
+            x = Dense(l, activation='tanh')(x)
+        
+        if(self.continuous):
+            activation = 'tanh'
+        else:
+            activation = 'softmax'
+        out_actions = Dense(self.act, activation=activation, name='output')(x)
+        
+
+        self.model = Model(inputs=[self.state_input, self.advantage, self.old_prediction], outputs = [out_actions])
+        
+    def initialize(self, lr, b1, b2, clip=0.2, c2=5e-3, noise=1.0):
+        if(self.continuous):
+            l = ppo_loss_continuous(
+                advantage=self.advantage,
+                old_prediction=self.old_prediction,
+                noise=noise,
+                clip=0.2,
+                c2=5e-3
+            )
+        else:
+            l = ppo_loss(
+                advantage=self.advantage,
+                old_prediction=self.old_prediction,
+                clip=clip,
+                c2=c2
+            )
+        self.model.compile(
+            optimizer=Adam(learning_rate=lr, beta_1=b1, beta_2=b2), 
+            loss = [l])
+
+    def get_action(self, obs, val=False, noise=1.0):
+        dummy_value = np.zeros((1,1))
+        dummy_action = np.zeros((1, self.act))
+        if(len(self.obs) == 1):
+            p = self.model.predict([obs.reshape(1, self.obs[0]), dummy_value, dummy_action])
+        else:
+            p = self.model.predict([obs.reshape(1, *self.obs), dummy_value, dummy_action])
+            
+        if(self.continuous):
+            if(val):
+                action = action_matrix = p[0]
+            else:
+                action = action_matrix = p[0] + np.random.normal(loc=0, scale=noise, size=p[0].shape)
+        else:
+            if(val):
+                action = np.argmax(p[0])
+            else:
+                action = np.random.choice(self.act, p=np.nan_to_num(p[0]))
+            action_matrix = np.zeros(self.act)
+            action_matrix[action] = 1
+        return action, action_matrix, p
+
+    def predict(self, st):
+        return self.get_action(st, val=True)[0]
+
+    def fit(self, obs, adv, old_pred, act, bs, epochs = 1):
+        return self.model.fit(
+            [obs, adv, old_pred], 
+            act, 
+            batch_size = bs,
+            epochs = epochs,
+            shuffle = True, 
+            verbose = 0
+        )
+
+
+class PPOCritic:
+    def __init__(self, in_state, layers=[128,128]):
+        self.obs = in_state
+
+        self.state_input = Input(shape=self.obs)
+
+        x = Dense(layers[0], activation='tanh')(self.state_input)
+        for l in layers[1:]:
+            x = Dense(l, activation='tanh')(x)
+
+        self.out = Dense(1)(x)
+        self.model = Model(inputs=[self.state_input], outputs=[self.out])
+
+    def initialize(self, lr, b1, b2, clip=0.2):
+        self.model.compile(optimizer=Adam(learning_rate=lr, beta_1=b1, beta_2=b2, clipvalue=clip), loss='mse', metrics=['mae'])
+        
+    def predict(self, st):
+        return self.model.predict(st)
+
+    def fit(self, obs, rew, bs, epochs=1):
+        return self.model.fit(
+            [obs], 
+            rew, 
+            batch_size = bs,
+            epochs = epochs, 
+            shuffle = True,
+            verbose = 0)
+
+
+class DDPGCritic:
+    def __init__(self, in_state, in_actions, layers=[128,128], reg=0.01):
+        self.obs = in_state
+        self.act = in_actions
+        self.init = VarianceScaling()
+        self.reg = l2(reg)
+        self.state_input = Input(shape = self.obs)
+        self.act_input = Input(shape = (self.act, ))
+
+        
+        st = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(self.state_input)
+        st = ELU()(st)
+        at = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(self.act_input)
+        at = ELU()(at)
+        
+
+        x = concatenate([st, at], axis=1)
+        for l in layers[1:]:
+            x = Dense(l, activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(x)
+            x = ELU()(x)
+
+        out = Dense(1, activation='linear')(x)
+        
+
+        self.model = Model(inputs =[self.state_input, self.act_input], outputs=[out])
+        
+    def initialize(self, lr, b1, b2):
+        self.model.compile(
+            optimizer=Adam(learning_rate=lr, beta_1=b1, beta_2=b2, clipvalue=0.5),
+            loss='mse',
+            metrics=['mae']
+        )
     
-    
-    def build_opt(self, learning_rate, beta_1, beta_2):
-        self.model.compile(optimizer=self.__build_opt__(learning_rate, beta_1, beta_2), loss='mse', metrics=['accuracy'])
-   
+    def batch_predict(self, st, at):
+        return self.model.predict([st, at])
     
     def predict(self, st, at):
-        if(len(st.shape) < 2):
-            assert len([st]) == len(at), 'mismatch between number of samples'
-            return self.model.predict([[st], at])
-        else:
-            assert len(st) == len(at), 'mistmatch between number of samples'
-            return self.model.predict([st, at])
+        return self.model.predict([[st], at])
 
-    
-    def transfer_weights(self, model, tau):
+
+    def transfer_weights(self, behavior_model, tau):
         self.model.set_weights(
-            [(1-tau)*l1 + tau*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
+            [((1-tau)*l1) + (tau*l2) for l1, l2 in zip(self.model.get_weights(), behavior_model.get_weights())])
+    
+    def fit(self, states, actions, y, epochs = 1):
+        return self.model.fit([states, actions], y, verbose=0, epochs=epochs)
+
+    def get_grads(self):
+        return K.function(
+            inputs = self.model.input,
+            outputs = K.gradients(self.model.output, self.model.input[1])
         )
 
-
-    def save(self, path):
-        self.model.save(path)
-
-    def load(self, path):
-        self.model = load_model(path)
-   
-
 class DDPGActor:
-    def __init__(self, obs_shape, act_shape, act_range):
-        self.obs_shape = obs_shape
-        
-        assert len(act_shape) < 2, "Only Box environment allowed"
+    def __init__(self, in_state, in_actions, layers=[128, 128], reg=0.01, range_high=1, range_low=-1):
+        self.obs = in_state
+        self.act = in_actions
+        self.init = VarianceScaling()
+        self.reg = l2(reg)
 
-        self.act_shape = act_shape[0] 
-        self.act_range = act_range
+        self.state_input = Input(shape = self.obs)
+        x = Dense(layers[0], activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(self.state_input)        
+        x = ELU()(x)
         
-    def __init_model__(self, model_params):
-        inp = Input((self.obs_shape))
-        x = Dense(model_params[0], activation='relu')(inp)
-        x = GaussianNoise(1.0)(x)
-        
-        for m in model_params[1:]:
-            x = Dense(m, activation='relu')(x)
-        
-        x = GaussianNoise(0.5)(x)
-        
-        # puts action out vals between -1 and 1
-        out = Dense(self.act_shape, activation='tanh', kernel_initializer= RandomUniform(minval = -3e-3, maxval = 3e-3))(x)
-        
-        # set to the correct range
-        act_range = self.act_range
-        out = Lambda(lambda i: i * act_range)(out)
-        self.model= Model(inp, out)
-        
-    def __build_opt__(self, lr, b1, b2, cf):
-        # gradients
-        # this never gets used, but puts the actor model into feed-forward mode
-        self.model.compile('sgd', 'mse')
 
-        act_grads = K.placeholder(shape=(None, self.act_shape))
+        for l in layers[1:]:
+            x = Dense(l, activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(x)
+            x = ELU()(x)
+
+
+        x = Dense(self.act, activation='tanh', use_bias=False)(x)        
+        # move to action range
+        out = Lambda(lambda i: range_high * i)(x)
+        self.model = Model(inputs = [self.state_input], outputs=[out])
+
+    def initialize(self, lr, b1, b2
+    ):
+        self.opt = Adam(lr, b1, b2, clipvalue=0.5)
+        self.model.compile(
+            optimizer=self.opt, 
+            loss = 'mse'
+        )
         
-        mean_grad = K.mean(act_grads, axis=0)
+
+        act_grads = K.placeholder(shape=(None, self.act))
+        mean_grad = K.mean(-act_grads, axis=0) #policy loss
         
-        # update function
         update_params = tf.gradients(self.model.output, self.model.trainable_weights, -act_grads)
         grads = zip(update_params, self.model.trainable_weights)
         
-        
-        # optimizer function
         return K.function(
             inputs=[self.model.input, act_grads], outputs=[mean_grad],
-            updates=[tf.train.AdamOptimizer(learning_rate=lr, beta1=b1, beta2=b2).apply_gradients(grads)][1:]
+            updates=[self.opt.apply_gradients(grads)]
         )
+
+    def predict(self, obs):
+        return self.model.predict(np.expand_dims(obs, axis=0))[0]
     
-    def get_grads(self, qmodel):
-        return K.function(
-            inputs=[qmodel.input[0], qmodel.input[1]],
-            outputs=K.gradients(qmodel.output, qmodel.input[1])
-        )
-    
-    def init_model(self, model_params=[64, 64]):
-        self.__init_model__(model_params)
-        
-    def build_opt(self, learning_rate, beta_1, beta_2, clipping_factor):
-        return self.__build_opt__(learning_rate, beta_1, beta_2, clipping_factor)
-        
-    def predict(self, st):
-        if(len(st.shape) < 2):
-            return self.model.predict(np.expand_dims(st, axis=0))
-        else:
-            return self.model.predict(st)
-        
-    def transfer_weights(self, model, tau):
+    def batch_predict(self, obs):
+        return self.model.predict(obs)
+
+    def transfer_weights(self, behavior_model, tau):
         self.model.set_weights(
-            [(1-tau)*l1 + tau*l2 for l1, l2 in zip(self.model.get_weights(), model.get_weights())]
-        )
+            [((1-tau)*l1) + (tau*l2) for l1, l2 in zip(self.model.get_weights(), behavior_model.get_weights())])
+        
 
-    def save(self, path):
-        self.model.save(path)
 
-    def load(self, path):
-        self.model = load_model(path)

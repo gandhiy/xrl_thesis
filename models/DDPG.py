@@ -1,358 +1,293 @@
 import os
-import pickle
 import imageio
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 
+from tqdm import tqdm
 from copy import deepcopy
-from time import time
 from .base import base
 from os.path import join
-from .networks import DDPGActor as Actor
-from .networks import DDPGCritic as Critic
-from core.tools import summary, Ornstein_Uhlenbeck_Noise
-from tensorflow.keras.models import load_model
+from core.tools import summary, Ornstein_Uhlenbeck_Noise, Gaussian_Noise, Zero_Noise
+from models.networks import DDPGCritic as Critic
+from models.networks import DDPGActor as Actor
 from core.replay_experience import Transition
+from tensorflow.keras.models import load_model
 
 from pdb import set_trace as debug
 
+
+
 class DDPGAgent(base):
     def __init__(
-        self, env, reward_class, model_name='temp', batch_size=256, memory_size=1028, gamma=0.95, epsilon = 1.0, 
-        epsilon_min=0.01, epsilon_decay=0.995, exploration_fraction=0.1, decay_timesteps=100, update_timesteps=50, 
-        tau=0.01, actor_lr = 0.001, critic_lr = 0.001, beta_1 = 0.9, beta_2 = 0.99, clipping=0.5, logger_steps = 500, 
-        learning_starts = 500, action_replay=False, render=False, explainer_updates=256, explainer_summarizing=25, sigma = 0.2, 
-        mu = 0, theta=0.15, summarize_shap=True, num_to_explain=5, val_eps = 10, val_numtimesteps = 1000, making_a_gif=250, 
-        gif_length = 500, save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', gifs = False, save_step = 1000,
-        actor_layers = [64,64], critic_layers=[64,64], training_iterations = 10
-        ):
+        self, 
+        env, 
+        reward_class, 
+        model_name='temp', 
+        batch_size = 256, memory_size=50000,
+        gamma = 0.99, tau = 0.001, noise_scale = 0.01,
+        actor_lr = 0.01, critic_lr = 0.001, beta_1 = 0.9, beta_2 = 0.99, critic_epochs=1,
+        validation_logging = 25, warmup = 25, render = False, 
+        sigma = 0.2, mu = 0, theta = 0.15, validation_episodes = 5,
+        save_gifs = False, gif_logging_episodes=100, gif_frames=1000, 
+        save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models',
+        actor_layers = [400,300], critic_layers=[400,300], actor_reg = 0.01, critic_reg = 0.01,
+        save_episode = 100, tb_log=True, verbose=0):
 
         super(DDPGAgent, self).__init__(
-            env, 1.0, beta_1, beta_2, tau, batch_size, gamma, memory_size, 
-            epsilon, epsilon_min, epsilon_decay, exploration_fraction, decay_timesteps, update_timesteps,
-            logger_steps, learning_starts, action_replay, render, model_name, save_paths, val_eps, 
-            val_numtimesteps, gifs, making_a_gif, gif_length, save_step
+            env, model_name, save_paths, 1.0, beta_1, beta_2, critic_epochs, tau, batch_size, gamma, 
+            memory_size, validation_logging, warmup, render, validation_episodes, save_gifs,
+            gif_logging_episodes, gif_frames, save_episode, verbose)
 
-        )
-
-        # inspired by stable-baselines code base
-        self.actor_lr = actor_lr
-        self.critic_lr = critic_lr
+        self.tb_log = tb_log
 
         if(len(self.env.action_space.shape) > 0):
-            envShape = self.env.action_space.shape 
+            self.num_actions = self.env.action_space.shape[0]
         else:
-            envShape = self.env.action_space.n
+            self.num_actions = self.env.action_space.n
+
+        self.critic = Critic(self.env.observation_space.shape, self.num_actions, critic_layers, critic_reg)
+        self.target_critic = Critic(self.env.observation_space.shape, self.num_actions, critic_layers, critic_reg)
+        self.critic.initialize(critic_lr, beta_1, beta_2)
+        self.get_grads = self.critic.get_grads()
 
 
-
-        self.sample_size = training_iterations * self.batch_size
-
-        ### Set up behavior Q ###
-        self.behavior_q = Critic(self.env.observation_space.shape, envShape)
-        self.behavior_q.init_model(critic_layers)
-        self.behavior_q.build_opt(self.critic_lr, self.beta_1, self.beta_2)
+        self.actor = Actor(self.env.observation_space.shape, self.num_actions, actor_layers, actor_reg, range_high=self.env.action_space.high, range_low=self.env.action_space.low)
+        self.target_actor = Actor(self.env.observation_space.shape, self.num_actions, actor_layers, actor_reg, range_high=self.env.action_space.high, range_low=self.env.action_space.low)
+        self.actor_optimizer = self.actor.initialize(actor_lr, beta_1, beta_2)
         
-        ### Set up target Q ###
-        self.target_q = Critic(self.env.observation_space.shape, envShape)
-        self.target_q.init_model(critic_layers)
-        self.target_q.build_opt(self.critic_lr, self.beta_1, self.beta_2)
-
-
-        ### Set up behavior pi ###
-        self.behavior_pi = Actor(self.env.observation_space.shape, envShape, self.env.action_space.high)
-        self.behavior_pi.init_model(actor_layers)
-        self.behavior_pi_AdamOpt = self.behavior_pi.build_opt(self.actor_lr, self.beta_1, self.beta_2, clipping)
-        self.get_critic_grad = self.behavior_pi.get_grads(self.behavior_q.model)
-
-        ### Set up target pi ###
-        self.target_pi = Actor(self.env.observation_space.shape, envShape, self.env.action_space.high)
-        self.target_pi.init_model(actor_layers)
-        _ = self.target_pi.build_opt(self.actor_lr, self.beta_1, self.beta_2, clipping)
-
+        
         self.transfer_weights()
-        
 
 
-
-        # Set up tb logging
         files = [f for f in os.listdir(self.save_path) if 'DDPG' in f]
-        self.save_path = join(self.save_path, 'DDPG{}'.format(len(files) + 1))
+        self.save_path = join(self.save_path, f'DDPG{len(files) + 1}')
         logdir = join(self.save_path, 'tensorboard_logs')
-        self.writer = summary(tf.summary.FileWriter(logdir))
+        if(self.tb_log):
+            self.writer = summary(tf.summary.FileWriter(logdir))
 
-        # explainer parameters
+
         self.explainer = None
-        self.explainer_updates = explainer_updates
-        self.num_explainer_summaries = explainer_summarizing
-        self.shap_summary = summarize_shap
-        self.num_to_explain = num_to_explain
 
-        # reward funciton set
         self.reward_class = reward_class
         self.reward_function = None
+        self.per_step_reward = []
 
-        # OU Noise
-        self.mu = mu
+        self.mu = mu 
         self.sigma = sigma
         self.theta = theta
-        self.exploration_noise = Ornstein_Uhlenbeck_Noise(envShape, self.mu, self.theta, self.sigma)
+        # self.exploration_noise = Ornstein_Uhlenbeck_Noise(self.num_actions, self.mu, self.theta, self.sigma)
+        self.exploration_noise = Gaussian_Noise(self.num_actions, scale=noise_scale*self.env.action_space.high)
+        self.__best_val_score = -1000000
 
+        self.csv = []
         
-
-    def _action_replay(self, at, st):
-        for _ in range(3):
-            st = self.act_once(at, st)
-        return st
-
-    def act(self, st):
         
-
-        at = self._action(st)
-        n = self.exploration_noise.noise()
-        self.state['training/exploration_noise'] = n
-        at += n
-        
-        if(self.action_replay): # repeat the same action 3 times
-            return self._action_replay(at, st)
-        else:
-            return self.act_once(at, st)
-
-    def _action(self, st):
-        return self.behavior_predict(st, single_obs=True)[0]
-
-    def shap_predictor(self):
-        return self.behavior_pi.model
-
-    def _asdf_test(self):
-        x = np.random.rand(100, self.env.observation_space.shape[0])
-        print(np.linalg.norm(self.target_pi.predict(x) - self.behavior_pi.predict(x)))
 
     def transfer_weights(self):
-        self.target_q.transfer_weights(self.behavior_q.model, self.tau)
-        self.target_pi.transfer_weights(self.behavior_pi.model, self.tau)    
+        self.target_critic.transfer_weights(self.critic.model, self.tau)
+        self.target_actor.transfer_weights(self.actor.model, self.tau)
 
-    def behavior_predict(self, state, single_obs=False):
-        return self.behavior_pi.predict(state)
+    def _action(self, obs):
+        return self.actor.predict(obs)
 
+    
+    def environment_step(self, obs, done, warming_up):
+        self.environment_iteration += 1
+        self.count += 1
+        at = self._action(obs)
+        if(warming_up):
+            p = self.episode_number/self.total_episodes
+            n = self.exploration_noise.noise()
+            at = at*p + (1 - p)*n
+            self.state['training/noise'] = ((1-p)*n, self.environment_iteration)
+        else:
+            self.state['training/noise'] = (0, self.environment_iteration)
+        obs_t, rt, done, _ = self.env.step(at)
+        self.state['training/per_step_reward'] = (rt, self.environment_iteration)
+        self.per_step_reward.append(rt)
+        trajectory = [obs, at, obs_t, done, rt]
+        obs = obs_t
+        if done:
+            self.count = 0
+            total_reward = np.sum(self.per_step_reward)
+            self.state['training/episode_reward'] = ((total_reward - self._exp_episode_reward)/self._std_episode_reward, self.episode_number)
+            self.per_step_reward = []
+            obs = self.env.reset()
+            trajectory[2] = obs
+        self.memory.push(trajectory[0], trajectory[1], trajectory[2], trajectory[3], trajectory[4])
+        return obs, done
 
-    def target_predict(self, state, single_obs=False):
-        return self.target_pi.predict(state)
-        
+    def batch_update(self):
+        batch = Transition(*zip(*self.memory.sample(self.batch_size)))
 
-
-    def update_on_batch(self): 
-
-        """
-         primed => target model
-         non-primed => behavior model
-         y_j = r_j = \gamma*Q'(s_{j+1}, \mu'(s_{j+1} | \theta^{\mu'}) | \theta^{Q'})
-         L_Q = \frac{1}{N} \sum_j (y_j - Q(s_j, a_j | \theta^Q))^2 ==> squared bellman update
-         \div_{\theta^{\mu}} J = \frac{1}{N} \sum_j \div_a Q(s_j, \mu(s_j | \theta^{\mu}) | \theta^Q)
-        """
-        batch = Transition(*zip(*self.memory.sample(self.sample_size)))
-        
         states = np.array(batch.state)
         actions = np.array(batch.action)
-        states_tp1 = np.array(batch.next_state)
-        actions_tp1 = self.target_predict(states_tp1)
-        
-        state_avgs = np.mean(states, axis=0)
-        for i in range(states.shape[1]):
-            self.state[f'env_info/obs_{i}_average'] = state_avgs[i]
+        next_state = np.array(batch.next_state)
 
-        state_std = np.std(states, axis=0)
-        for j in range(states.shape[1]):
-            self.state[f'env_info/obs_{j}_std'] = state_std[j]
+
+        ### Critic ###
+        mask = np.ones(self.batch_size) * ([not l for l in batch.done])
+        mask = mask.reshape((-1, 1))
 
 
             
-        #### CRITIC UPDATE ####
-        
-        # bellman update
-        mask = np.ones(self.sample_size) * ([not l for l in batch.done])
-        mask = mask.reshape((-1, 1))
 
-        y = self.target_q.model.predict([states_tp1, actions_tp1])
+        r, self._parameter_dict = self.reward_function(batch, **self._parameter_dict)
+        y = self.target_critic.batch_predict(next_state, self.target_actor.batch_predict(next_state))
         y *= self.gamma
         y *= mask
-        
-        # apply shap updates here if desired
-        r, self._parameter_dict = self.reward_function(batch, **self._parameter_dict)
-        
         y += np.array(r).reshape((-1, 1))
 
 
-        history = self.behavior_q.model.fit([states, actions], y, verbose=0)
+        history = self.critic.fit(states, actions, y, self.epochs)
+        self.state['training/critic_loss'] = (np.mean(history.history['loss']), self.training_iteration)
+        self.state['training/critic_error'] = (np.mean(history.history['mean_absolute_error']), self.training_iteration)
 
-        # sequence = DDPGSequence(states, actions, y, self.batch_size)
-        # history = self.behavior_q.model.fit_generator(sequence, verbose= 0)
-
-        self.state['training/critic_accuracy'] = history.history['acc'][0]
-        self.state['training/critic_loss'] = history.history['loss'][0]
-        self.state['training/num_episodes'] = self._num_episodes
-
-        #### ACTOR UPDATE ####
-        acts = self.behavior_pi.predict(states)
-        
-        # gets the gradient of the critic output with respect to the input actions
-        action_grads = self.get_critic_grad([states, acts])
-        # apply gradients 
-        grads = self.behavior_pi_AdamOpt([batch.state, np.array(action_grads).reshape(-1, self.env.action_space.shape[0])])
-        
-        self.state['training/actor_loss'] = grads[0]  
-        
-        
+        q_grads_wrt_a = self.get_grads([states, self.actor.batch_predict(states)]) # value of the target policy over the behavior policy
+        mean_grads = self.actor_optimizer([states, np.array(q_grads_wrt_a).reshape(-1, self.num_actions)])
+        self.state['training/actor_loss'] = (mean_grads[0], self.training_iteration)
 
 
 
-    def learn(self, total_timesteps=10000):
-        self.reward_function = self.reward_class(self.shap_predictor()).reward_function
-        st = self.env.reset()
-        assert self.learning_starts < total_timesteps
-        self._total_timesteps = total_timesteps
-
-        
-        self.__best_val_score = -10000000
-
-        for tt in range(total_timesteps):
-            start = time()
-            self.update_dictionary()
-            self.state['timestep'] = tt
-            st = self.act(st) 
-            
-            
-            if(self.memory.can_sample(self.sample_size) and tt > self.learning_starts):
-                self.update_on_batch()   
-                
-                if (tt+1)%self.update_timesteps == 0:
-                    self.transfer_weights()
-                    
-                if (tt+1)%self.logging_step == 0:
-                    self.validate()
-
-                if (tt+1)%self.gif_logger_step == 0 and self.gif:
-                    self.create_gif(frames=self.gif_frames, save = join(self.save_path, f'gifs/timesteps_{tt}'))
-
-                if (tt+1)%self.save_log == 0:
-                    p = join(self.save_path, f'timesteps_{tt + 1}')
-                    os.makedirs(p, exist_ok=True)
-                    self.save(p)
-
-            
-            self.state['training/time_per_iteration'] = time() - start
-            self.writer.update(self.state)
-            self.state = {} # reset logging for each step (not everything needs to be plotted each timestep)
-        
-        self.env.close()
-        
-
-
-    def create_gif(self, frames=500, fps=29, save='model'):
-        """
-         Makes a gif of an agent
-        """
-        images = []
+    def learn(self, episodes=1000):
+        self.reward_function = self.reward_class(self.actor.model).reward_function
         obs = self.env.reset()
-        try:
-            img = self.env.render(mode='rgb_array')
-        except NotImplementedError:
-            img = self.env.env.render(mode='rgb_array')
+        self.total_episodes = episodes + self.warmup
+        self.episode_number = 0
+        self.update_dictionary()
+        self.training_iteration = 0
+        self.environment_iteration = 0
+        for e in tqdm(range(self.total_episodes)):
+            self.state['episode'] = self.episode_number = e
+            done = False
+            self.count = 0
+            while not done:
+                warming_up = self.warmup > self.episode_number
+                obs, done = self.environment_step(obs, done, warming_up)
 
-        eps_rew = 0
-        episode = 1
+                ### Algorithm Functions ###
+                if(self.memory.can_sample(self.batch_size) and not warming_up):
+                    self.training_iteration += 1
+                    self.batch_update()
+                    self.transfer_weights()
+
+                    # do this at the begging of the episode
+                    if(self.episode_number%self.validation_logging == 0 and self.count == 1):
+                        self.validate()
+                        
+
+                    if(self.save_gif and self.episode_number%self.gif_logging == 0):
+                        self.create_gif(frames = self.gif_frames, save=join(self.save_path, f'gifs/episode_{self.episode_number+1}'))
+
+                    if(self.episode_number%self.save_log == 0 and self.count == 0):
+                        p = join(self.save_path, f'episode_{self.episode_number+1}')
+                        os.makedirs(p, exist_ok=True)
+                        self.save(p)
+
+                    
+
+                self.update_dictionary()
+                if self.tb_log:
+                    self.writer.update(self.state)
+                
+                
+        
+    def validate(self):
+        env = deepcopy(self.env)
+        obs = env.reset()
+        if self.render:
+            try:
+                env.render(mode='rbg_array')
+            except NotImplementedError:
+                env.env.render(mode='rgb_array')
+        episode_rewards = []
+        episode_lengths = []
+        for v in range(self.num_validation_episode):            
+            done = False
+            count = 0
+            reward = 0
+            while not done:
+                count += 1
+                action = self.target_actor.predict(obs)
+                obs, rt, done, _ = env.step(action)
+                if(self.verbose > 1):
+                    print(f"Validation Episode: {v} \t\t Step: {count} \t Action: {action}")
+                if self.render:
+                    try:
+                        env.render(mode='rgb_array')
+                    except NotImplementedError:
+                        env.env.render(mode='rgb_array')
+                reward += rt
+            obs = env.reset()
+            episode_rewards.append(reward)
+            episode_lengths.append(count)
+        env.close()
+        del(env)
+
+        episode_rewards = (episode_rewards - self._exp_episode_reward)/self._std_episode_reward
+        
+        avg_reward = np.mean(episode_rewards)
+        avg_length = np.mean(episode_lengths)
+
+        if(avg_reward > self.__best_val_score):
+            self.__best_val_score = avg_reward
+            p = join(self.save_path, 'best_model')
+            os.makedirs(p, exist_ok=True)
+            self.save(p)
+        
+        self.state[f'validation/average_reward'] = (avg_reward, self.episode_number)
+        self.state[f'validation/average_episode_length'] = (avg_length, self.episode_number)
+        self.state[f'validation/best_average_reward'] = (self.__best_val_score, self.episode_number)
+
+
+
+
+
+    def create_gif(self, frames=500, fps=60, save='model'):
+        env = deepcopy(self.env)
+        images = []
+        obs = env.reset()
+        
+        try:
+            img = env.render(mode='rgb_array')
+        except NotImplementedError:
+            img = env.env.render(mode='rgb_array')
+        
         for _ in range(frames):
             images.append(img)
-            action = self.predict(obs)[0]
-            obs, rew, done, _ = self.env.step(action)
-            eps_rew += rew
+            action = self.target_actor.predict(obs)
+            obs, _, done, _ = env.step(action)
             try:
-                img = self.env.render(mode='rgb_array')
+                img = env.render(mode='rgb_array')
             except NotImplementedError:
-                img = self.env.env.render(mode='rgb_array')
+                img = env.env.render(mode='rgb_array')
+
             if(done):
-                print(f"Episode {episode} with reward {eps_rew}")
-                episode += 1
-                eps_rew = 0
-                obs = self.env.reset()
+                obs = env.reset()
         
         if('.gif' not in save):
             save += '.gif'
-        imageio.mimsave(save, [np.array(img) for i, img in enumerate(images) if i%2 == 0], fps=29)
-        self.env.close()
-
-
-
-    def validate(self):
-        env_target = deepcopy(self.env)
-        env_behavior = deepcopy(self.env)
-        env_dictionary = {
-            'target': env_target,
-            'behavior': env_behavior
-        }
-
-        for k,v in env_dictionary.items():
-            env = v
-            obs = env.reset()
-            if(self.render and k == 'target'):
-                try:
-                    env.render(mode='rgb_array')
-                except NotImplementedError:
-                    env.env.render(mode='rgb_array')
-            episode_rewards = []
-            episode_lengths = []
-
-            for _ in range(self.num_validation_episode):
-                eps_count = 0
-                reward = 0
-                done = False
-                while not done:
-                    eps_count += 1
-                    if(k == 'target'):
-                        a = self.target_predict(obs)[0]
-                    else:
-                        a = self.behavior_predict(obs)[0]
-                    
-                    obs, r, done, _ = env.step(a)
-
-                    if(self.render and k == 'target'):
-                        try:
-                            env.render(mode='rgb_array')
-                        except NotImplementedError:
-                            env.env.render(mode='rgb_array')
-
-                    reward += r
-                
-                obs = env.reset()
-                episode_rewards.append(reward)
-                episode_lengths.append(eps_count)
-
-            env.close()
-            del(env)
-            avg_reward = np.mean(episode_rewards)
-            avg_length = np.mean(episode_lengths)
-            
-            if(avg_reward > self.__best_val_score and k == 'target'):
-                self.__best_val_score = avg_reward
-                p = join(self.save_path, 'best_model')
-                os.makedirs(p, exist_ok=True)
-                self.save(p)
-
-            self.state[f'validation/average_{k}_reward'] = avg_reward
-            self.state[f'validation/average_{k}_episode_length'] = avg_length
-        self.state['validation/best_average_reward'] = self.__best_val_score
-
+        imageio.mimsave(save, [np.array(img) for i, img in enumerate(images) if i%2 == 0], fps=fps)
         
 
+
     def save(self, path):
-        self.behavior_pi.model.save(join(path, 'behavior_pi.h5'))
-        self.behavior_q.model.save(join(path, 'behavior_q.h5'))
-        self.target_pi.model.save(join(path, 'target_pi.h5'))
-        self.target_q.model.save(join(path, 'target_q.h5'))
+        self.actor.model.save(join(path, 'actor.h5'))
+        self.target_actor.model.save(join(path, 'target_actor.h5'))
+        self.critic.model.save(join(path, 'critic.h5'))
+        self.target_critic.model.save(join(path, 'target_critic.h5'))
 
 
+                
     def load(self, path):
-        self.behavior_pi.model = load_model(join(path, 'behavior_pi.h5'))
-        self.behavior_q.model = load_model(join(path, 'behavior_q.h5'))
-        self.target_pi.model = load_model(join(path, 'target_pi.h5'))
-        self.target_q.model = load_model(join(path, 'target_q.h5'))
+        self.actor.model = load_model(join(path, 'actor.h5'))
+        self.target_actor.model = load_model(join(path, 'target_actor.h5'))
+        self.critic.model = load_model(join(path, 'critic.h5'))
+        self.target_critic.model = load_model(join(path, 'target_critic.h5'))
+
+            
+            
+            
+            
+            

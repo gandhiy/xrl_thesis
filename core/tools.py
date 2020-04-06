@@ -3,9 +3,13 @@ Extra tools
 """
 
 
-import numpy as np
 import pickle
+import numpy as np
 import tensorflow as tf
+import tensorflow.keras.backend as K
+
+
+from tensorflow.keras.utils import Sequence
 
 from pdb import set_trace as debug
 
@@ -71,22 +75,47 @@ class Ornstein_Uhlenbeck_Noise:
         self.dim = act_dim
         self.mu = mu 
         self.theta = theta
-        self.sigma = sigma
+        self.sig = sigma
         self.reset()
 
     def reset(self):
         self.state = np.ones(self.dim) * self.mu
 
+    def decay(self, d):
+        self.theta *= d
+
+
     def noise(self):
         x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma + np.random.randn(len(x))
+        dx = self.theta * (self.mu - x) + self.sig + np.random.randn(len(x))
         self.state = x + dx
         return self.state
 
+class Gaussian_Noise:
+    def __init__(self, act_dim, loc=0, scale=1.0):
+        self.mu = loc
+        self.sig = scale
+        self.dim = act_dim
+    
+    def reset(self):
+        pass
+    
+    def decay(self, d):
+        if(np.random.rand() > 0.5):
+            self.sig *= d
 
-def load_model(path):
-    with open(path, 'rb') as f:
-        return pickle.load(f)
+    def noise(self):
+        return np.random.normal(loc=self.mu, scale=self.sig, size=(self.dim))
+        
+class Zero_Noise:
+    def __init__(self, act_dim, **kwargs):
+        self.dim = act_dim
+    def reset(self):
+        pass
+    def decay(self, d):
+        pass
+    def noise(self):
+        return np.zeros(self.dim)
 
 class summary:
     def __init__(self, writer):
@@ -94,9 +123,44 @@ class summary:
 
 
     def update(self, state):
-        timestep = state['timestep']
         for k,v in state.items():
-            if(k is not 'timestep'):
-                x = tf.Summary(value=[tf.Summary.Value(tag = k, simple_value=v)])
-                self.writer.add_summary(x, timestep)
+            if(k is not 'episode'):
+                x = tf.Summary(value=[tf.Summary.Value(tag = k, simple_value=v[0])])
+                self.writer.add_summary(x, v[1])
         self.writer.flush()
+
+
+def load_model(path):
+    with open(path, 'rb') as f:
+        return pickle.load(f)
+
+
+
+
+
+def surrogate_loss(r, adv, prob, clip, c2):
+    return -K.mean(K.minimum(r * adv, K.clip(r, min_value=1 - clip, max_value=1 + clip) * adv) + c2 * -(prob * K.log(prob + 1e-10)))
+
+
+def ppo_loss(advantage, old_prediction, clip=0.2, c2=5e-3):
+    def loss(y_true, y_pred):
+        prob = K.sum(y_true * y_pred, axis=-1)
+        old_prob = K.sum(y_true * old_prediction, axis=-1)
+        r = prob/(old_prob + 1e-10)
+        return surrogate_loss(r, advantage, prob, clip, c2)
+    return loss
+
+
+def ppo_loss_continuous(advantage, old_prediction, noise=1.0, clip=0.2, c2=5e-3):
+    def loss(y_true, y_pred):
+        var = K.square(noise)
+        
+        denom = K.sqrt(2 * var * np.pi)
+        prob_num = K.exp( -K.square(y_true - y_pred)/(2*var))
+        old_prob_num = K.exp( -K.square(y_true - old_prediction)/(2*var))
+        prob = prob_num/denom
+        old_prob = old_prob_num/denom
+        # don't let old_prob be 0
+        r = prob/(old_prob + 1e-10)
+        return surrogate_loss(r, advantage, prob, clip, c2)
+    return loss

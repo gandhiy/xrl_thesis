@@ -10,8 +10,10 @@ class Identity:
         pass
     
     def reward_function(self, batch, **kwargs):
-        return batch.reward, kwargs
-
+        try:
+            return batch.reward, kwargs
+        except AttributeError:
+            return batch[3], kwargs
 
 
 class reward:
@@ -33,13 +35,9 @@ class SHAP(reward):
 
     def get_shap_vals(self, batch, **kwargs):
         x_train = np.array(batch.state)
-        x_test = np.array(batch.next_state)[0:kwargs['num_to_explain']]
-        if(kwargs['explainer'] is None or kwargs['num_explainer_summaries']):
-            x_train = shap.kmeans(x_train, kwargs['num_explainer_summaries'])
-            kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
-
-
-        return kwargs['explainer'].shap_values(x_test, nsamples=10, l1_reg='aic', silent=True)
+        x_test = np.array(batch.state)
+        kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
+        return kwargs['explainer'].shap_values(x_test, nsamples=50, l1_reg='aic', silent=True)
 
     def plot_shap_vals(self, vals):
         out_state = {}
@@ -48,59 +46,41 @@ class SHAP(reward):
             for j, obs in enumerate(per_obs_mean):
                 out_state[f'shap_vals/obs_{j}_act_{i}'] = obs
         return out_state
+       
 
-
-class identity_SHAP(SHAP):
-
+class dqn_shap(SHAP):
     def __init__(self, predictor):
-        super(identity_SHAP, self).__init__(predictor)
-    
-    def reward_function(self, batch, **kwargs):
-        shap_vals = self.get_shap_vals(batch, **kwargs)
-        kwargs['state'].update(self.plot_shap_vals(shap_vals))
-        return batch.reward, kwargs 
-
-
-class additive_SHAP(SHAP):
-    def __init__(self, predictor):
-        super(additive_SHAP, self).__init__(predictor)
+        super(dqn_shap, self).__init__(predictor)
 
     def reward_function(self, batch, **kwargs):
-
-        shap_vals = self.get_shap_vals(batch, **kwargs)
-        kwargs['state'].update(self.plot_shap_vals(shap_vals))
-
-        total_val = np.mean(np.abs(shap_vals))
-        kwargs['state']['training/shap_reward'] = total_val
-    
-        return total_val, kwargs
-    
-
-
-class curriculum(SHAP):
-    def __init__(self, predictor):
-        super(curriculum, self).__init__(predictor)
-        self.shap_reward = additive_SHAP(predictor)
-        self.greedy_reward = Identity()
-        self.split_val = 1
-
-
-    def reward_function(self, batch, **kwargs):
-        if kwargs['state']['timestep'] < self.split_val * kwargs['_total_timesteps']:
-            return self.shap_reward.reward_function(batch, **kwargs)
-        else:
-            return self.greedy_reward.reward_function(batch, **kwargs)
-            
+        #(action_space x samples x obs_space)
+        vals = np.array(self.get_shap_vals(batch, **kwargs))
+        shap_vals = []
+        for i,a in enumerate(batch.action):
+            shap_vals.append(vals[a, i])
         
+        kwargs['state'].update(self.plot_shap_vals(shap_vals))
+        total_val = np.sum(np.abs(shap_vals))
+        kwargs['state']['training/shap_reward'] = total_val
+        return total_val, kwargs
 
 
-class curriculum_3(curriculum):
+    def plot_shap_vals(self, vals):
+        out_state = {}
+        
+        per_obs_mean = np.sum(np.abs(vals), axis=0)
+        for j, obs in enumerate(per_obs_mean):
+            out_state[f'shap_vals/obs_{j}'] = obs
+        return out_state
+
+
+
+class dqn_shap_curriculum(SHAP):
     def __init__(self, predictor):
-        super(curriculum_3, self).__init__(predictor)
-        self.split_val = .3
+        super(dqn_shap_curriculum, self).__init__(predictor)
+        self.dqn_shap = dqn_shap(predictor)
+        self.Identity = Identity(predictor)
 
-
-class curriculum_6(curriculum):
-    def __init__(self, predictor):
-        super(curriculum_6, self).__init__(predictor)
-        self.split_val = .6
+    def reward_function(self, batch, **kwargs):
+        if kwargs['state']['timestep'] < .33 * kwargs['_total_timesteps']:
+            self.dqn_shap.reward_function(batch, **kwargs)
