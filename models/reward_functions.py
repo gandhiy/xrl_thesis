@@ -36,16 +36,11 @@ class SHAP(reward):
     def get_shap_vals(self, batch, **kwargs):
         x_train = np.array(batch.state)
         x_test = np.array(batch.state)
-        kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
-        return kwargs['explainer'].shap_values(x_test, nsamples=50, l1_reg='aic', silent=True)
+        kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, shap.sample(x_train, nsamples=kwargs['samples']))
+        return kwargs['explainer'].shap_values(shap.sample(x_test, nsamples=kwargs['samples']), nsamples=50, l1_reg='aic', silent=True)
 
     def plot_shap_vals(self, vals):
-        out_state = {}
-        for i, a_list in enumerate(vals):
-            per_obs_mean = np.mean(np.abs(a_list), axis=0)
-            for j, obs in enumerate(per_obs_mean):
-                out_state[f'shap_vals/obs_{j}_act_{i}'] = obs
-        return out_state
+        raise NotImplementedError
        
 
 class dqn_shap(SHAP):
@@ -54,6 +49,7 @@ class dqn_shap(SHAP):
 
     def reward_function(self, batch, **kwargs):
         #(action_space x samples x obs_space)
+        self.t = kwargs['state']['training_iteration']
         vals = np.array(self.get_shap_vals(batch, **kwargs))
         shap_vals = []
         for i,a in enumerate(batch.action):
@@ -61,7 +57,7 @@ class dqn_shap(SHAP):
         
         kwargs['state'].update(self.plot_shap_vals(shap_vals))
         total_val = np.sum(np.abs(shap_vals))
-        kwargs['state']['training/shap_reward'] = total_val
+        kwargs['state']['training/shap_reward'] = (total_val, self.t)
         return total_val, kwargs
 
 
@@ -70,7 +66,7 @@ class dqn_shap(SHAP):
         
         per_obs_mean = np.sum(np.abs(vals), axis=0)
         for j, obs in enumerate(per_obs_mean):
-            out_state[f'shap_vals/obs_{j}'] = obs
+            out_state[f'shap_vals/obs_{j}'] = (obs, self.t)
         return out_state
 
 

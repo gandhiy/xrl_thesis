@@ -23,7 +23,7 @@ class DQNAgent(base):
         render = False, validation_logging = 25, validation_episodes = 5, 
         save_gifs = False, save_gifs_every_n_episodes = 100, gif_frames=1000,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', save_episodes = 
-        100, layers = [64,64], verbose=0, tb_log = True):
+        100, layers = [64,64], verbose=0, tb_log = True, explainer_samples = -1):
 
         super(DQNAgent, self).__init__(
         env, model_name, save_paths, learning_rate, beta_1, beta_2, epochs, tau, batch_size,
@@ -55,6 +55,12 @@ class DQNAgent(base):
         self.reward_function = None
         self.per_step_reward = []
 
+        if(explainer_samples < 0):
+            self.samples = self.batch_size
+        else:
+            self.samples = explainer_samples
+            
+
         self.epsilon = start_epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay_factor = epsilon_decay
@@ -69,6 +75,7 @@ class DQNAgent(base):
 
     def environment_step(self, obs, done):
         self.environment_iteration += 1
+        self.state['environment_iteration'] = self.environment_iteration
         self.count += 1
         at = self._action(obs)
         obs_t, rt, done, _ = self.env.step(at)
@@ -123,8 +130,9 @@ class DQNAgent(base):
                 if(self.memory.can_sample(self.batch_size) and not warming_up):
                     
                     
-                    for _ in range(self.epochs):   
+                    for _ in range(self.epochs):                         
                         self.training_iteration += 1                     
+                        self.state['training_iteration'] = self.training_iteration
                         self.batch_update()
                     self.target.transfer_weights(self.critic, self.tau)
 

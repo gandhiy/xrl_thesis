@@ -124,7 +124,7 @@ class summary:
 
     def update(self, state):
         for k,v in state.items():
-            if(k is not 'episode'):
+            if(type(v) == tuple):
                 x = tf.Summary(value=[tf.Summary.Value(tag = k, simple_value=v[0])])
                 self.writer.add_summary(x, v[1])
         self.writer.flush()
