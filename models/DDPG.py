@@ -173,11 +173,10 @@ class DDPGAgent(base):
                     self.transfer_weights()
 
                     # do this at the begging of the episode
-                    if(self.episode_number%self.validation_logging == 0 and self.count == 1):
+                    if(self.episode_number%self.validation_logging == 0 and self.count == 0):
                         self.validate()
                         
-
-                    if(self.save_gif and self.episode_number%self.gif_logging == 0):
+                    if(self.save_gif and self.episode_number%self.gif_logging == 0 and self.count == 0):
                         self.create_gif(frames = self.gif_frames, save=join(self.save_path, f'gifs/episode_{self.episode_number+1}'))
 
                     if(self.episode_number%self.save_log == 0 and self.count == 0):

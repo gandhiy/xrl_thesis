@@ -117,9 +117,10 @@ class DQNAgent(base):
             done = False
             self.count = 0
             while not done:
+                warming_up = self.warmup > self.episode_number
                 obs, done = self.environment_step(obs, done)
 
-                if(self.memory.can_sample(self.batch_size) and self.warmup <= self.episode_number):
+                if(self.memory.can_sample(self.batch_size) and not warming_up):
                     
                     
                     for _ in range(self.epochs):   
@@ -138,9 +139,11 @@ class DQNAgent(base):
                         os.makedirs(p, exist_ok=True)
                         self.save(p)
                     
-                    if(self.epsilon > self.epsilon_min):
-                        self.epsilon *= self.epsilon_decay_factor
-                    self.state['training/epsilon'] = (self.epsilon, self.environment_iteration)
+                if(self.epsilon > self.epsilon_min and warming_up):
+                    self.epsilon *= self.epsilon_decay_factor
+                else:
+                    self.epsilon = 0
+                self.state['training/epsilon'] = (self.epsilon, self.environment_iteration)
 
                 self.update_dictionary()
                 if self.tb_log:
