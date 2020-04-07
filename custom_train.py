@@ -17,6 +17,8 @@ def main(configs):
     
     
     env = gym.make(configs['env'])
+    if('curriculum' in configs['env'].casefold()):
+        env.init(configs['episodes'])
 
     
     if(configs['reward'].casefold() == 'identity'):

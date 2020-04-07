@@ -23,7 +23,7 @@ class DQNAgent(base):
         render = False, validation_logging = 25, validation_episodes = 5, 
         save_gifs = False, save_gifs_every_n_episodes = 100, gif_frames=1000,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', save_episodes = 
-        100, layers = [64,64], verbose=0, tb_log = False):
+        100, layers = [64,64], verbose=0, tb_log = True):
 
         super(DQNAgent, self).__init__(
         env, model_name, save_paths, learning_rate, beta_1, beta_2, epochs, tau, batch_size,
@@ -142,7 +142,7 @@ class DQNAgent(base):
                 if(self.epsilon > self.epsilon_min and warming_up):
                     self.epsilon *= self.epsilon_decay_factor
                 else:
-                    self.epsilon = 0
+                    self.epsilon = self.epsilon_min
                 self.state['training/epsilon'] = (self.epsilon, self.environment_iteration)
 
                 self.update_dictionary()
@@ -182,6 +182,7 @@ class DQNAgent(base):
         env.close()
         del(env)
 
+        avg_total_reward = np.mean(episode_rewards)
         episode_rewards = (episode_rewards - self._exp_episode_reward)/self._std_episode_reward
         avg_reward = np.mean(episode_rewards)
         avg_length = np.mean(episode_lengths)
@@ -192,7 +193,8 @@ class DQNAgent(base):
             os.makedirs(p, exist_ok=True)
             self.save(p)
 
-        self.state[f'validation/average_reward'] = (avg_reward, self.episode_number)
+        self.state[f'validation/average_total_reward'] = (avg_total_reward, self.episode_number)
+        self.state[f'validation/average_relative_reward'] = (avg_reward, self.episode_number)
         self.state[f'validation/average_episode_length'] = (avg_length, self.episode_number)
         self.state[f'validation/best_average_reward'] = (self.__best_val_score, self.episode_number)
 

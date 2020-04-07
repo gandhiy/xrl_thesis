@@ -73,10 +73,24 @@ register(
 )
 
 register(
+    id='MountainCarCurriculum-v0',
+    entry_point='gym.envs.classic_control:Curriculum_MountainCarEnv',
+    max_episode_steps=200,
+    reward_threshold=-110.0
+)
+
+register(
     id='MountainCar-v0',
     entry_point='gym.envs.classic_control:MountainCarEnv',
     max_episode_steps=200,
     reward_threshold=-110.0,
+)
+
+register(
+    id='MountainCarContinuousCurriculum-v0',
+    entry_point='gym.envs.classic_control:Curriculum_Continuous_MountainCarEnv',
+    max_episode_steps=999,
+    reward_threshold=90.0
 )
 
 register(
