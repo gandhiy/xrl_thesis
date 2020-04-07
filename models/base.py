@@ -2,6 +2,7 @@
 import os
 import numpy as np
 
+from copy import deepcopy
 from pickle import load, dump
 from os.path import join
 from core.replay_experience import ReplayMemory
@@ -61,13 +62,14 @@ class base:
     def generate_random_baseline(self):
         rewards = []
         per_step_rewards = []
+        env = deepcopy(self.env)
         for _ in range(50):
             done = False
-            obs = self.env.reset()
+            obs = env.reset()
             r = 0
             while not done:
-                a = self.env.action_space.sample()
-                obs, reward, done, _ = self.env.step(a)
+                a = env.action_space.sample()
+                obs, reward, done, _ = env.step(a)
                 per_step_rewards.append(reward)
                 r += reward
             rewards.append(r)
