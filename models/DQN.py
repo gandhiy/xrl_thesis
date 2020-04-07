@@ -59,7 +59,7 @@ class DQNAgent(base):
             self.samples = self.batch_size
         else:
             self.samples = explainer_samples
-            
+        
 
         self.epsilon = start_epsilon
         self.epsilon_min = epsilon_min

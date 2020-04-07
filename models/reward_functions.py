@@ -34,10 +34,13 @@ class SHAP(reward):
 
 
     def get_shap_vals(self, batch, **kwargs):
-        x_train = np.array(batch.state)
-        x_test = np.array(batch.state)
-        kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, shap.sample(x_train, nsamples=kwargs['samples']))
-        return kwargs['explainer'].shap_values(shap.sample(x_test, nsamples=kwargs['samples']), nsamples=50, l1_reg='aic', silent=True)
+        ind = np.random.choice(np.arange(len(batch.state)), size=(kwargs['sample']))
+        x_train = np.array(batch.state)[ind]
+        x_test = np.array(batch.state)[ind]
+        self.actions = np.array(batch.action)[ind]
+        
+        kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
+        return kwargs['explainer'].shap_values(x_test, nsamples=50, l1_reg='aic', silent=True)
 
     def plot_shap_vals(self, vals):
         raise NotImplementedError
@@ -52,7 +55,7 @@ class dqn_shap(SHAP):
         self.t = kwargs['state']['training_iteration']
         vals = np.array(self.get_shap_vals(batch, **kwargs))
         shap_vals = []
-        for i,a in enumerate(batch.action):
+        for i,a in enumerate(self.actions):
             shap_vals.append(vals[a, i])
         
         kwargs['state'].update(self.plot_shap_vals(shap_vals))
