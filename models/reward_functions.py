@@ -34,11 +34,11 @@ class SHAP(reward):
 
 
     def get_shap_vals(self, batch, **kwargs):
-        ind = np.random.choice(np.arange(len(batch.state)), size=(kwargs['sample']))
+        ind = np.random.choice(np.arange(len(batch.state)), size=(kwargs['samples']))
         x_train = np.array(batch.state)[ind]
         x_test = np.array(batch.state)[ind]
         self.actions = np.array(batch.action)[ind]
-        
+
         kwargs['explainer'] = shap.KernelExplainer(self.shap_predict, x_train)
         return kwargs['explainer'].shap_values(x_test, nsamples=50, l1_reg='aic', silent=True)
 
