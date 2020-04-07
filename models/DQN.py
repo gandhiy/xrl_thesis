@@ -147,10 +147,9 @@ class DQNAgent(base):
                         os.makedirs(p, exist_ok=True)
                         self.save(p)
                     
-                if(self.epsilon > self.epsilon_min and warming_up):
+                if(self.epsilon > self.epsilon_min):
                     self.epsilon *= self.epsilon_decay_factor
-                else:
-                    self.epsilon = self.epsilon_min
+                
                 self.state['training/epsilon'] = (self.epsilon, self.environment_iteration)
 
                 self.update_dictionary()

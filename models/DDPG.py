@@ -224,8 +224,8 @@ class DDPGAgent(base):
         env.close()
         del(env)
 
+        avg_total_reward = np.mean(episode_rewards)
         episode_rewards = (episode_rewards - self._exp_episode_reward)/self._std_episode_reward
-        
         avg_reward = np.mean(episode_rewards)
         avg_length = np.mean(episode_lengths)
 
@@ -235,7 +235,8 @@ class DDPGAgent(base):
             os.makedirs(p, exist_ok=True)
             self.save(p)
         
-        self.state[f'validation/average_reward'] = (avg_reward, self.episode_number)
+        self.state[f'validation/average_total_reward'] = (avg_total_reward, self.episode_number)
+        self.state[f'validation/average_relative_reward'] = (avg_reward, self.episode_number)
         self.state[f'validation/average_episode_length'] = (avg_length, self.episode_number)
         self.state[f'validation/best_average_reward'] = (self.__best_val_score, self.episode_number)
 
