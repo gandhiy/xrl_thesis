@@ -104,3 +104,31 @@ class dqn_shap_curriculum(SHAP):
     def reward_function(self, batch, **kwargs):
         if kwargs['state']['timestep'] < .33 * kwargs['_total_timesteps']:
             self.dqn_shap.reward_function(batch, **kwargs)
+
+
+class mountaincar_curriculum:
+    def __init__(self, predictor):
+        pass
+
+    def reward_function(self, batch, **kwargs):
+        p = kwargs['episode_number']/kwargs['total_episodes']
+        t = kwargs['training_iteration']
+        states = np.array(batch.state)
+        if p < 0.20:
+            r = states[:, 0] + 0.5
+            kwargs['state']['training/curriculum_reward'] = (np.mean(r), t)
+            return r, kwargs
+        elif p < 0.4:
+            r = states[:, 0] + 0.25
+            kwargs['state']['training/curriculum_reward'] = (np.mean(r), t)
+            return r, kwargs
+        elif p < 0.6:
+            r = states[:, 0]
+            kwargs['state']['training/curriculum_reward'] = (np.mean(r), t)
+            return r, kwargs
+        else:
+            r = np.array(batch.reward)
+            kwargs['state']['training/curriculum_reward'] = (np.mean(r), t)
+            return r, kwargs
+        
+    
