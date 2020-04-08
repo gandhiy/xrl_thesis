@@ -27,17 +27,17 @@ class DDPGAgent(base):
         batch_size = 256, memory_size=50000,
         gamma = 0.99, tau = 0.001, noise_scale = 0.01,
         actor_lr = 0.01, critic_lr = 0.001, beta_1 = 0.9, beta_2 = 0.99, critic_epochs=1,
-        validation_logging = 25, warmup = 25, render = False, 
+        validation_logging = 25, warmup = 25, render = False, epsilon_min = 0.001,
         sigma = 0.2, mu = 0, theta = 0.15, validation_episodes = 5,
         save_gifs = False, gif_logging_episodes=100, gif_frames=1000, 
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models',
         actor_layers = [400,300], critic_layers=[400,300], actor_reg = 0.01, critic_reg = 0.01,
-        save_episode = 100, tb_log=True, verbose=0, explainer_samples = -1):
+        save_episodes = 100, tb_log=True, verbose=0, explainer_samples = -1):
 
         super(DDPGAgent, self).__init__(
             env, model_name, save_paths, 1.0, beta_1, beta_2, critic_epochs, tau, batch_size, gamma, 
             memory_size, validation_logging, warmup, render, validation_episodes, save_gifs,
-            gif_logging_episodes, gif_frames, save_episode, verbose)
+            gif_logging_episodes, gif_frames, save_episodes, verbose)
 
         self.tb_log = tb_log
 
@@ -80,6 +80,7 @@ class DDPGAgent(base):
         self.mu = mu 
         self.sigma = sigma
         self.theta = theta
+        self.epsilon_min = epsilon_min
         # self.exploration_noise = Ornstein_Uhlenbeck_Noise(self.num_actions, self.mu, self.theta, self.sigma)
         self.exploration_noise = Gaussian_Noise(self.num_actions, scale=noise_scale*self.env.action_space.high)
         self.__best_val_score = -1000000
@@ -95,6 +96,8 @@ class DDPGAgent(base):
     def _action(self, obs):
         return self.actor.predict(obs)
 
+    def predict(self, obs):
+        return self.target_actor.predict(obs)
     
     def environment_step(self, obs, done, warming_up):
         self.environment_iteration += 1
@@ -107,7 +110,10 @@ class DDPGAgent(base):
             at = at*p + (1 - p)*n
             self.state['training/noise'] = ((1-p)*n, self.environment_iteration)
         else:
-            self.state['training/noise'] = (0, self.environment_iteration)
+            p = 1 - self.epsilon_min
+            n = self.exploration_noise.noise()
+            at = at*p + (1 - p)*n
+            self.state['training/noise'] = ((1-p)*n, self.environment_iteration)
         obs_t, rt, done, _ = self.env.step(at)
         self.state['training/per_step_reward'] = (rt, self.environment_iteration)
         self.per_step_reward.append(rt)

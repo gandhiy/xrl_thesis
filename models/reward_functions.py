@@ -115,11 +115,11 @@ class mountaincar_curriculum:
         t = kwargs['training_iteration']
         states = np.array(batch.state)
         if p < 0.20:
-            r = states[:, 0] + 0.5
+            r = 10*np.abs(states[:, 1])
             kwargs['state']['training/curriculum_reward'] = (np.mean(r), t)
             return r, kwargs
         elif p < 0.4:
-            r = states[:, 0] + 0.25
+            r = 10*np.abs(states[:, 1]) + states[:, 0]
             kwargs['state']['training/curriculum_reward'] = (np.mean(r), t)
             return r, kwargs
         elif p < 0.6:

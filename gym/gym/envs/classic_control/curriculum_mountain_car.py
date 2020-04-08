@@ -45,10 +45,11 @@ class Curriculum_MountainCarEnv(gym.Env):
         return [seed]
 
     def curriculum(self, pos, vel):
-        if(self.episode/self.total_episodes < 1.0/3.0):
-            return bool(pos >= ((1.0/3.0)*self.goal_position) and vel >= ((1.0/3.0)*self.goal_velocity))
-        elif(self.episode/self.total_episodes < 2.0/3.0):
-            return bool(pos >= ((2.0/3.0)*self.goal_position) and vel >= ((2.0/3.0)*self.goal_velocity))
+        p = ((1.0*self.episode)/self.total_episodes)
+        if(p < 0.30):
+            return bool(pos >= -0.35 and vel >= self.goal_velocity)
+        elif(p < 0.60):
+            return bool(pos >= 0.0 and vel >= self.goal_velocity)
         else:
             return bool(pos >= self.goal_position and vel >= self.goal_velocity)
 
@@ -63,7 +64,8 @@ class Curriculum_MountainCarEnv(gym.Env):
         if (position==self.min_position and velocity<0): velocity = 0
 
         done = self.curriculum(position, velocity)
-        reward = -1.0
+        reward = -1 + position
+
 
         self.state = (position, velocity)
         return np.array(self.state), reward, done, {}
