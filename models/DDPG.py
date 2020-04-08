@@ -32,7 +32,7 @@ class DDPGAgent(base):
         save_gifs = False, gif_logging_episodes=100, gif_frames=1000, 
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models',
         actor_layers = [400,300], critic_layers=[400,300], actor_reg = 0.01, critic_reg = 0.01,
-        save_episode = 100, tb_log=True, verbose=0):
+        save_episode = 100, tb_log=True, verbose=0, explainer_samples = -1):
 
         super(DDPGAgent, self).__init__(
             env, model_name, save_paths, 1.0, beta_1, beta_2, critic_epochs, tau, batch_size, gamma, 
@@ -68,6 +68,10 @@ class DDPGAgent(base):
 
 
         self.explainer = None
+        if(explainer_samples < 0):
+            self.samples = self.batch_size
+        else:
+            self.samples = explainer_samples
 
         self.reward_class = reward_class
         self.reward_function = None
@@ -94,6 +98,7 @@ class DDPGAgent(base):
     
     def environment_step(self, obs, done, warming_up):
         self.environment_iteration += 1
+        self.state['environment_iteration'] = self.environment_iteration
         self.count += 1
         at = self._action(obs)
         if(warming_up):
@@ -169,6 +174,7 @@ class DDPGAgent(base):
                 ### Algorithm Functions ###
                 if(self.memory.can_sample(self.batch_size) and not warming_up):
                     self.training_iteration += 1
+                    self.state['training_iteration'] = self.training_iteration
                     self.batch_update()
                     self.transfer_weights()
 

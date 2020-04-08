@@ -59,7 +59,7 @@ class dqn_shap(SHAP):
             shap_vals.append(vals[a, i])
         
         kwargs['state'].update(self.plot_shap_vals(shap_vals))
-        total_val = np.sum(np.abs(shap_vals))
+        total_val = np.mean(np.abs(shap_vals))
         kwargs['state']['training/shap_reward'] = (total_val, self.t)
         return total_val, kwargs
 
@@ -67,12 +67,33 @@ class dqn_shap(SHAP):
     def plot_shap_vals(self, vals):
         out_state = {}
         
-        per_obs_mean = np.sum(np.abs(vals), axis=0)
+        per_obs_mean = np.mean(np.abs(vals), axis=0)
         for j, obs in enumerate(per_obs_mean):
             out_state[f'shap_vals/obs_{j}'] = (obs, self.t)
         return out_state
 
+class ddpg_shap(SHAP):
+    def __init__(self, predictor):
+        super(ddpg_shap, self).__init__(predictor)
 
+    def reward_function(self, batch, **kwargs):
+        self.t = kwargs['state']['training_iteration']
+        vals = np.array(self.get_shap_vals(batch, **kwargs))
+        shap_vals = np.squeeze(vals)
+        
+        kwargs['state'].update(self.plot_shap_vals(shap_vals))
+        total_val = np.mean(np.abs(shap_vals))
+        kwargs['state']['training/shap_reward'] = (total_val, self.t)
+        return total_val, kwargs
+
+    def plot_shap_vals(self, vals):
+        out_state = {}
+
+        per_obs_mean = np.mean(np.abs(vals), axis=0)
+        for j, obs in enumerate(per_obs_mean):
+            out_state[f'shap_vals/obs_{j}'] = (obs, self.t)
+        return out_state
+    
 
 class dqn_shap_curriculum(SHAP):
     def __init__(self, predictor):

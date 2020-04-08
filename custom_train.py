@@ -25,6 +25,8 @@ def main(configs):
         reward = Identity
     elif(configs['reward'].casefold() == 'dqn_shap'):
         reward = dqn_shap
+    elif(configs['reward'].casefold() == 'ddpg_shap'):
+        reward = ddpg_shap
     else:
         raise AttributeError("need to specify the reward function")
 
