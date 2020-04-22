@@ -29,6 +29,10 @@ def main(configs):
         reward = ddpg_shap
     elif(configs['reward'].casefold() == 'mountaincar_curriculum'):
         reward = mountaincar_curriculum
+    elif(configs['reward'].casefold() == 'dqn_shap_curriculum'):
+        reward = dqn_shap_curriculum
+    elif(configs['reward'].casefold() == 'ppo_shap'):
+        reward = ppo_shap
     else:
         raise AttributeError("need to specify the reward function")
 

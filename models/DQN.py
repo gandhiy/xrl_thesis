@@ -23,7 +23,8 @@ class DQNAgent(base):
         render = False, validation_logging = 25, validation_episodes = 5, 
         save_gifs = False, save_gifs_every_n_episodes = 100, gif_frames=1000,
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models', save_episodes = 
-        100, layers = [64,64], verbose=0, tb_log = True, explainer_samples = -1):
+        100, layers = [64,64], verbose=0, tb_log = True, explainer_samples = -1,
+        curriculum_balance = 1.0):
 
         super(DQNAgent, self).__init__(
         env, model_name, save_paths, learning_rate, beta_1, beta_2, epochs, tau, batch_size,
@@ -60,7 +61,7 @@ class DQNAgent(base):
         else:
             self.samples = explainer_samples
         
-
+        self.curriculum_balance = curriculum_balance
         self.epsilon = start_epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay_factor = epsilon_decay
@@ -72,6 +73,9 @@ class DQNAgent(base):
             return self.critic.predict(obs)
         else:
             return self.env.action_space.sample()
+
+    def predict(self, obs):
+        return self.critic.predict(obs)
 
     def environment_step(self, obs, done):
         self.environment_iteration += 1
@@ -109,7 +113,6 @@ class DQNAgent(base):
         self.state['training/accuracy'] = (history.history['acc'][0], self.training_iteration)
         self.state['training/loss'] = (history.history['loss'][0], self.training_iteration)
         
-
     def learn(self, episodes=1000):
         self.reward_function = self.reward_class(self.critic.model).reward_function
         self.total_episodes = episodes + self.warmup
@@ -155,7 +158,6 @@ class DQNAgent(base):
                 self.update_dictionary()
                 if self.tb_log:
                     self.writer.update(self.state)
-
 
     def validate(self):
         env = deepcopy(self.env)
@@ -207,8 +209,8 @@ class DQNAgent(base):
 
     def create_gif(self, frames = 500, fps = 60, save='model'):
         env = deepcopy(self.env)
-        images = []
-        obs = env.render()
+        images = []        
+        obs = env.reset()
 
         try:
             img = env.render(mode='rgb_array')
@@ -231,6 +233,8 @@ class DQNAgent(base):
             save += '.gif'
 
         imageio.mimsave(save, [np.array(img) for i,img in enumerate(images) if i%2 == 0], fps=fps)
+        env.close() 
+        del(env)
 
     def save(self, path):
         self.critic.model.save(join(path, 'critic.h5'))

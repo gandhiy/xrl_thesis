@@ -170,10 +170,12 @@ class DDPGCritic:
         self.state_input = Input(shape = self.obs)
         self.act_input = Input(shape = (self.act, ))
 
-        
-        st = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(self.state_input)
+        st = BatchNormalization()(self.state_input)
+        st = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(st)
         st = ELU()(st)
-        at = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(self.act_input)
+        
+        at = BatchNormalization()(self.act_input)
+        at = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(at)
         at = ELU()(at)
         
 
@@ -222,7 +224,8 @@ class DDPGActor:
         self.reg = l2(reg)
 
         self.state_input = Input(shape = self.obs)
-        x = Dense(layers[0], activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(self.state_input)        
+        x = BatchNormalization()(self.state_input)
+        x = Dense(layers[0], activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(x)        
         x = ELU()(x)
         
 

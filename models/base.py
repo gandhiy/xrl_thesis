@@ -20,6 +20,7 @@ class base:
         self.save_path = path
         self.__parameter_dict = None
         self.env = env
+        self.v_env = deepcopy(env)
         self.learning_rate = lr
         self.beta_1 = b1
         self.beta_2 = b2

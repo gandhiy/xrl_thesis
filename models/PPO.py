@@ -25,7 +25,7 @@ class PPOAgent(base):
         save_paths = '/Users/yashgandhi/Documents/xrl_thesis/saved_models/',
         critic_batch_size = 32, actor_batch_size=32, critic_epochs = 1, actor_epochs=1,
         actor_layers = [64,64], critic_layers = [64,64], save_episodes = 100,
-        tb_log = True, verbose=0
+        tb_log = True, verbose=0, explainer_samples= -1
     ):
         super(PPOAgent, self).__init__(
             env, model_name, save_paths, 1.0, beta_1, beta_2, 1, 1.0, 
@@ -63,6 +63,12 @@ class PPOAgent(base):
         self.explainer = None
         self.reward_class = reward_class
         self.reward_function = None
+        if(explainer_samples < 0):
+            self.samples = self.batch_size
+        else:
+            self.samples = explainer_samples
+
+
         self.per_step_reward = []
         self.__best_val_score = -1000000
 
@@ -191,6 +197,7 @@ class PPOAgent(base):
         env.close()
         del(env)
 
+        avg_total_reward = np.mean(episode_rewards)
         episode_rewards = (episode_rewards - self._exp_episode_reward)/self._std_episode_reward
         
         avg_reward = np.mean(episode_rewards)
@@ -202,7 +209,8 @@ class PPOAgent(base):
             os.makedirs(p, exist_ok=True)
             self.save(p)
         
-        self.state[f'validation/average_reward'] = (avg_reward, self.episode_number)
+        self.state[f'validation/average_total_reward'] = (avg_total_reward, self.episode_number)
+        self.state[f'validation/average_relative_reward'] = (avg_reward, self.episode_number)
         self.state[f'validation/average_episode_length'] = (avg_length, self.episode_number)
         self.state[f'validation/best_average_reward'] = (self.__best_val_score, self.episode_number)
 

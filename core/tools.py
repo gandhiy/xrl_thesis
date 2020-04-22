@@ -5,17 +5,18 @@ Extra tools
 
 import pickle
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import tensorflow.keras.backend as K
 
-
 from tensorflow.keras.utils import Sequence
+from collections import defaultdict
 
-from pdb import set_trace as debug
+
 
 def test_model(env, model, parameters):
     """
-     Test a given environment with a trained (not necessarily) model under specific parameters
+     Test a given environment with a (not necessarily) trained model under specific parameters
 
      env -> gym environment
      model -> trained stable_baselines model
@@ -129,18 +130,12 @@ class summary:
                 self.writer.add_summary(x, v[1])
         self.writer.flush()
 
-
 def load_model(path):
     with open(path, 'rb') as f:
         return pickle.load(f)
 
-
-
-
-
 def surrogate_loss(r, adv, prob, clip, c2):
     return -K.mean(K.minimum(r * adv, K.clip(r, min_value=1 - clip, max_value=1 + clip) * adv) + c2 * -(prob * K.log(prob + 1e-10)))
-
 
 def ppo_loss(advantage, old_prediction, clip=0.2, c2=5e-3):
     def loss(y_true, y_pred):
@@ -149,7 +144,6 @@ def ppo_loss(advantage, old_prediction, clip=0.2, c2=5e-3):
         r = prob/(old_prob + 1e-10)
         return surrogate_loss(r, advantage, prob, clip, c2)
     return loss
-
 
 def ppo_loss_continuous(advantage, old_prediction, noise=1.0, clip=0.2, c2=5e-3):
     def loss(y_true, y_pred):
@@ -164,3 +158,13 @@ def ppo_loss_continuous(advantage, old_prediction, noise=1.0, clip=0.2, c2=5e-3)
         r = prob/(old_prob + 1e-10)
         return surrogate_loss(r, advantage, prob, clip, c2)
     return loss
+
+
+def parse_events_file(path: str) -> pd.DataFrame:
+    metrics = defaultdict(list)
+    for e in tf.train.summary_iterator(path):
+        for v in e.summary.value:
+            if isinstance(v.simple_value, float):
+                metrics[v.tag].append(v.simple_value)
+    metrics_df = pd.DataFrame({k: v for k,v in metrics.items() if len(v) > 1})
+    return metrics_df
