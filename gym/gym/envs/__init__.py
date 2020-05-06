@@ -1,11 +1,5 @@
 from gym.envs.registration import registry, register, make, spec
 
-# SHAP Mujoco
-register(
-    id='ShapHumanoid-v0',
-    entry_point='gym.envs.mujoco:ShapHumanoidEnv',
-)
-
 
 
 # Algorithmic

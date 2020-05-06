@@ -5,6 +5,11 @@ import numpy as np
 from pdb import set_trace as debug
 
 
+class reward:
+    def __init__(self, predictor):
+        self.predictor = predictor
+    
+
 class Identity:
     def __init__(self, predictor=None):
         pass
@@ -15,13 +20,10 @@ class Identity:
         except AttributeError:
             return batch[3], kwargs
 
-class reward:
-    def __init__(self, predictor):
-        self.predictor = predictor
-    
 
-    
-  
+
+
+
 class SHAP(reward):
     def __init__(self, predictor):
         super(SHAP, self).__init__(predictor)
@@ -37,10 +39,10 @@ class SHAP(reward):
         except:
             self.actions = np.array(batch[3])[ind]
 
-        if(kwargs['episode_number'] % kwargs['save_log'] == 0):
+        if((kwargs['episode_number'] % kwargs['save_log'] == 0 and kwargs['count'] == 0) or kwargs['explainer'] is None):
             kwargs['explainer'] = shap.KernelExplainer(self.predictor, x_train)
         
-        return kwargs['explainer'].shap_values(x_test, nsamples=50, l1_reg='aic', silent=True)
+        return kwargs['explainer'].shap_values(x_test, nsamples=50, l1_reg='aic', silent=True), kwargs
 
     def plot_shap_vals(self, vals):
         raise NotImplementedError
@@ -52,8 +54,11 @@ class dqn_shap(SHAP):
 
     def reward_function(self, batch, plot_reward=True, **kwargs):
         #(action_space x samples x obs_space)
-        self.t = kwargs['state']['training_iteration']
-        vals = np.array(self.get_shap_vals(batch, **kwargs))
+        self.t = kwargs['training_iteration']
+        vals, tmp_kwargs = self.get_shap_vals(batch, **kwargs)
+        vals = np.array(vals)
+        kwargs.update(tmp_kwargs)
+        
         shap_vals = []
         for i,a in enumerate(self.actions):
             shap_vals.append(vals[a, i])
@@ -79,7 +84,9 @@ class ddpg_shap(SHAP):
 
     def reward_function(self, batch, plot_reward=True, **kwargs):
         self.t = kwargs['training_iteration']
-        shap_vals = np.array(self.get_shap_vals(batch, **kwargs)).squeeze()
+        vals, tmp_kwargs = self.get_shap_vals(batch, **kwargs)
+        shap_vals = np.array(vals).squeeze()
+        kwargs.update(tmp_kwargs)
         
         kwargs['state'].update(self.plot_shap_vals(shap_vals))
         total_val = np.sum(np.abs(shap_vals))
@@ -115,7 +122,7 @@ class dqn_shap_curriculum(SHAP):
             px = (10/3.0)*(p - 0.45)
             qx = 1 - px
             shap_reward, kwargs  = self.dqn_shap.reward_function(batch, False, **kwargs)
-            r = px*shap_reward + qx*(kwargs['curriculum_balance']*np.mean(np.array(batch.reward)))
+            r = px*shap_reward + qx*np.mean(np.array(batch.reward))
             kwargs['state']['training/shap_curriculum_reward'] = (r, t)
             return r, kwargs
         else:
@@ -146,6 +153,23 @@ class ddpg_shap_curriculum(SHAP):
         else:
             kwargs['state']['training/shap_curriculum_reward'] = (np.mean(np.array(batch.reward)), t)
             return batch.reward, kwargs
+
+class dqn_shap_identity(dqn_shap):
+    def __init__(self, predictor):
+        super(dqn_shap_identity, self).__init__(predictor)
+
+    def reward_function(self, batch, plot_reward=True, **kwargs):
+        self.t = kwargs['training_iteration']
+        vals, tmp_kwargs = self.get_shap_vals(batch, **kwargs)
+        vals = np.array(vals)
+        kwargs.update(tmp_kwargs)
+
+        shap_vals = []
+        for i,a in enumerate(self.actions):
+            shap_vals.append(vals[a, i])
+        
+        kwargs['state'].update(self.plot_shap_vals(shap_vals))
+        return batch.reward, kwargs
 
 
 class mountaincar_curriculum:

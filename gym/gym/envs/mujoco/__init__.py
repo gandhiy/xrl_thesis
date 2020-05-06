@@ -16,6 +16,3 @@ from gym.envs.mujoco.thrower import ThrowerEnv
 from gym.envs.mujoco.striker import StrikerEnv
 
 
-#testing shap humanoid example
-
-from gym.envs.mujoco.shap_humanoid import ShapHumanoidEnv

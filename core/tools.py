@@ -126,9 +126,13 @@ class summary:
     def update(self, state):
         for k,v in state.items():
             if(type(v) == tuple):
-                x = tf.Summary(value=[tf.Summary.Value(tag = k, simple_value=v[0])])
-                self.writer.add_summary(x, v[1])
+                try:
+                    x = tf.Summary(value=[tf.Summary.Value(tag = k, simple_value=v[0])])
+                    self.writer.add_summary(x, v[1])
+                except TypeError:
+                    print(k)
         self.writer.flush()
+
 
 def load_model(path):
     with open(path, 'rb') as f:
@@ -158,7 +162,6 @@ def ppo_loss_continuous(advantage, old_prediction, noise=1.0, clip=0.2, c2=5e-3)
         r = prob/(old_prob + 1e-10)
         return surrogate_loss(r, advantage, prob, clip, c2)
     return loss
-
 
 def parse_events_file(path: str) -> pd.DataFrame:
     metrics = defaultdict(list)
