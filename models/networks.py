@@ -7,6 +7,7 @@ import tensorflow.keras.backend as K
 sys.path.append("..")
 
 from core.tools import ppo_loss, ppo_loss_continuous
+from tensorflow.keras.losses import Huber
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Dense, GaussianNoise, Input, concatenate
 from tensorflow.keras.layers import BatchNormalization, Flatten, Lambda, Conv2D
@@ -19,21 +20,31 @@ from pdb import set_trace as debug
 
 # for DQN
 class DQNPolicy:
-    def __init__(self, in_state, in_actions, layers):
+    def __init__(self, in_state, in_actions, layers, activation='relu', reg=0.01):
         self.obs = in_state
         self.act = in_actions
+        self.init = VarianceScaling(scale=2.0)
+        self.reg = l2(reg)
         self.state_input = Input(shape = self.obs)
 
-        x = Dense(layers[0], activation='relu')(self.state_input)
-        for l in layers[1:]:
-            x = Dense(l, activation='relu')(x)
-        
+        if isinstance(activation, (str,)):
+            x = Dense(layers[0], activation=activation, kernel_initializer=self.init, kernel_regularizer=self.reg)(self.state_input)
+            for l in layers[1:]:
+                x = Dense(l, activation=activation, kernel_initializer=self.init, kernel_regularizer=self.reg)(x)
+        else:
+            x = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer=self.reg)(self.state_input)
+            x = activation()(x)
+            for l in layers[1:]:
+                x = Dense(l, activation=None, kernel_initializer=self.init, kernel_regularizer=self.reg)(x)
+                x = activation()(x)
+
+
         out = Dense(self.act, activation='softmax')(x)
         self.model = Model(inputs = [self.state_input], outputs=[out])
 
-    def initialize(self, lr, b1, b2):
+    def initialize(self, opt):
         self.model.compile(
-            optimizer=Adam(learning_rate=lr, beta_1 = b1, beta_2 = b2, clipvalue = 0.5),
+            optimizer=opt,
             loss = 'mse',
             metrics = ['accuracy'],
         )
@@ -162,7 +173,7 @@ class PPOCritic:
 
 
 class DDPGCritic:
-    def __init__(self, in_state, in_actions, layers=[128,128], reg=0.01):
+    def __init__(self, in_state, in_actions, layers=[128,128], reg=0.01, activation=ELU):
         self.obs = in_state
         self.act = in_actions
         self.init = VarianceScaling()
@@ -170,28 +181,38 @@ class DDPGCritic:
         self.state_input = Input(shape = self.obs)
         self.act_input = Input(shape = (self.act, ))
 
-        st = BatchNormalization()(self.state_input)
-        st = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(st)
-        st = ELU()(st)
-        
-        at = BatchNormalization()(self.act_input)
-        at = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(at)
-        at = ELU()(at)
-        
+        if isinstance(activation, (str, )):
+            st = BatchNormalization()(self.state_input)
+            st = Dense(layers[0], activation=activation, kernel_initializer=self.init, kernel_regularizer=self.reg)(st)
+            
+            at = BatchNormalization()(self.act_input)
+            at = Dense(layers[0], activation=activation, kernel_initializer=self.init, kernel_regularizer=self.reg)(at)
+            
+            x = concatenate([st, at], axis=1)
+            for l in layers[1:]:
+                x = Dense(l, activation=activation, kernel_initializer=self.init, kernel_regularizer=self.reg)(x)
+            
+        else:
+            st = BatchNormalization()(self.state_input)
+            st = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(st)
+            st = activation()(st)
+            
+            at = BatchNormalization()(self.act_input)
+            at = Dense(layers[0], activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(at)
+            at = activation()(at)
+            
 
-        x = concatenate([st, at], axis=1)
-        for l in layers[1:]:
-            x = Dense(l, activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(x)
-            x = ELU()(x)
+            x = concatenate([st, at], axis=1)
+            for l in layers[1:]:
+                x = Dense(l, activation=None, kernel_initializer=self.init, kernel_regularizer = self.reg)(x)
+                x = activation()(x)
 
         out = Dense(1, activation='linear')(x)
-        
-
         self.model = Model(inputs =[self.state_input, self.act_input], outputs=[out])
         
-    def initialize(self, lr, b1, b2):
+    def initialize(self, opt):
         self.model.compile(
-            optimizer=Adam(learning_rate=lr, beta_1=b1, beta_2=b2, clipvalue=0.5),
+            optimizer=opt,
             loss='mse',
             metrics=['mae']
         )
@@ -217,21 +238,29 @@ class DDPGCritic:
         )
 
 class DDPGActor:
-    def __init__(self, in_state, in_actions, layers=[128, 128], reg=0.01, range_high=1, range_low=-1):
+    def __init__(self, in_state, in_actions, layers=[128, 128], reg=0.01, activation=ELU, range_high=1, range_low=-1):
         self.obs = in_state
         self.act = in_actions
         self.init = VarianceScaling()
         self.reg = l2(reg)
-
         self.state_input = Input(shape = self.obs)
-        x = BatchNormalization()(self.state_input)
-        x = Dense(layers[0], activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(x)        
-        x = ELU()(x)
-        
 
-        for l in layers[1:]:
-            x = Dense(l, activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(x)
-            x = ELU()(x)
+        if isinstance(activation, (str, )):
+            x = BatchNormalization()(self.state_input)
+            x = Dense(layers[0], activation=activation, kernel_initializer=self.init, kernel_regularizer=self.reg)(x)
+
+            for l in layers[1:]:
+                x = Dense(l, activation=activation, kernel_initializer=self.init, kernel_regularizer=self.reg)(x)
+                
+        else:
+            x = BatchNormalization()(self.state_input)
+            x = Dense(layers[0], activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(x)        
+            x = activation()(x)
+            
+
+            for l in layers[1:]:
+                x = Dense(l, activation=None, kernel_initializer = self.init, kernel_regularizer = self.reg)(x)
+                x = activation()(x)
 
 
         x = Dense(self.act, activation='tanh', use_bias=False)(x)        
@@ -239,9 +268,8 @@ class DDPGActor:
         out = Lambda(lambda i: range_high * i)(x)
         self.model = Model(inputs = [self.state_input], outputs=[out])
 
-    def initialize(self, lr, b1, b2
-    ):
-        self.opt = Adam(lr, b1, b2, clipvalue=0.5)
+    def initialize(self, opt):
+        self.opt = opt
         self.model.compile(
             optimizer=self.opt, 
             loss = 'mse'
