@@ -52,7 +52,7 @@ class DQNAgent(base):
 
 
     def __init__(
-        self, env, reward_class, opt, model_name='temp', 
+        self, env, reward_class, opt, policy=None, model_name='temp', 
         batch_size=256, memory_size=50000, gamma=0.995, tau = 0.001,
         epsilon_min = 0.001, epsilon_decay = 0.995, 
         warmup=25, validation_logging = 25, validation_episodes = 5, 
@@ -70,11 +70,19 @@ class DQNAgent(base):
             self.num_actions = self.env.action_space.shape[0]
         else:
             self.num_actions = self.env.action_space.n
+        
+        
+        if policy is None:
+            self.critic = DQNPolicy(self.env.observation_space.shape, self.num_actions, layers = layers, activation=activation, reg=reg)
+        else:
+            self.critic = policy # allows for initialized policies outside of the network
 
-        self.critic = DQNPolicy(self.env.observation_space.shape, self.num_actions, layers = layers, activation=activation, reg=reg)
         self.critic.initialize(opt)
 
-        self.target = DQNPolicy(self.env.observation_space.shape, self.num_actions, layers = layers, activation=activation, reg=reg)
+        if policy is None:
+            self.target = DQNPolicy(self.env.observation_space.shape, self.num_actions, layers = layers, activation=activation, reg=reg)
+        else:
+            self.target = deepcopy(policy)
         self.target.transfer_weights(self.critic, self.tau)
 
         self.reward_function = reward_class(self.critic.model.predict).reward_function
@@ -224,3 +232,4 @@ class DQNAgent(base):
         self.target.model = load_model(join(path, 'target.h5'))
 
         
+

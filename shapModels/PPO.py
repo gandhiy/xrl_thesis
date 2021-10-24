@@ -93,6 +93,7 @@ class PPOAgent(base):
         V = self.critic.predict(obs)
 
         advantage = reward - V
+        #                                
         actor_history = self.actor.fit(obs, advantage, old_prediction, action, self.actor_batch_size, self.actor_epochs)
         critic_history = self.critic.fit(obs, reward, self.critic_batch_size, self.critic_epochs)
 
